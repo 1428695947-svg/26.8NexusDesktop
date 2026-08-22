@@ -51,6 +51,13 @@
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+  * @brief EXTI3 中断服务函数 (触摸 T_IRQ = PD3, 下降沿触发)
+  */
+void EXTI3_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
+}
 
 /* USER CODE END 0 */
 
