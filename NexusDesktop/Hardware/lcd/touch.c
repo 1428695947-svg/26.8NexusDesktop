@@ -95,6 +95,10 @@ volatile uint16_t dbg_tp_y_raw = 0;
 /* 当前使用的校准记录序号 (来自 Flash, 0=无记录; 每次校准 +1) */
 volatile uint32_t g_cal_seq = 0;
 
+/* 触摸使能标志: 默认关闭, 调用 TP_Enable() 后才开始工作 */
+static volatile uint8_t s_tp_enabled = 0;
+static volatile uint8_t s_tp_inited = 0;
+
 /*****************************************************************************
  * @name       :void TP_Write_Byte(uint8_t num)   
  * @date       :2018-08-09 
@@ -290,7 +294,12 @@ void TP_Draw_Big_Point(uint16_t x,uint16_t y,uint16_t color)
 								1-touch
 ******************************************************************************/  					  
 uint8_t TP_Scan(uint8_t tp)
-{			   
+{
+    /* 触摸未使能时不扫描 (LVGL indev 等直接调用者也返回"未按下") */
+    if (s_tp_enabled == 0)
+    {
+        return 0;
+    }
 	if(PEN_READ()==GPIO_PIN_RESET)//有按键按下
 	{
 		if(tp)TP_Read_XY2(&tp_dev.x,&tp_dev.y);//读取物理坐标
@@ -664,6 +673,11 @@ uint8_t TP_Init(void)
 ******************************************************************************/
 void TP_UpdateDebug(void)
 {
+    /* 触摸未使能时不刷新调试变量 */
+    if (s_tp_enabled == 0)
+    {
+        return;
+    }
     /* 读取 XPT2046 原始 AD 值 (不过滤, 保留最原始数据用于调试) */
     uint16_t raw_x, raw_y;
     TP_Read_XY(&raw_x, &raw_y);
@@ -676,4 +690,237 @@ void TP_UpdateDebug(void)
     dbg_tp_y = tp_dev.y;
 }
 
+/*****************************************************************************
+ * @name       :void TP_Enable(void)
+ * @function   :开启触摸功能 (按需启动)
+ * @note       首次调用自动执行 TP_Init() (触摸 GPIO + EXTI3 中断配置),
+ *             之后应用层任务即可调用 TP_UpdateDebug()/TP_Scan() 开始工作。
+ *             必须在 delay_init() 之后调用; 可重复调用 (防重复初始化)。
+******************************************************************************/
+void TP_Enable(void)
+{
+    if (s_tp_inited == 0)
+    {
+        TP_Init();
+        s_tp_inited = 1;
+    }
+    s_tp_enabled = 1;
+}
 
+/*****************************************************************************
+ * @name       :void TP_Disable(void)
+ * @function   :关闭触摸功能 (停止扫描/画图, 引脚保持已初始化状态)
+******************************************************************************/
+void TP_Disable(void)
+{
+    s_tp_enabled = 0;
+}
+
+/*****************************************************************************
+ * @name       :uint8_t TP_IsEnabled(void)
+ * @function   :查询触摸是否已开启
+ * @retval     1=已开启, 0=未开启
+******************************************************************************/
+uint8_t TP_IsEnabled(void)
+{
+    return (uint8_t)s_tp_enabled;
+}
+
+
+
+/* ==================== 多点校准参数 ==================== */
+#define CAL_POINTS_NUM   9U      /* 校准点数: 3x3 网格 (点越多越准) */
+#define CAL_MARGIN       30U     /* 边缘留白 (像素) */
+#define CAL_SAMPLE_CNT   5U      /* 每点采样次数 */
+#define CAL_MIN_VALID    3U      /* 每点最少有效采样数 */
+
+/* 校准点: 屏幕坐标 + 对应原始 AD */
+typedef struct
+{
+    uint16_t sx, sy;
+    uint16_t rx, ry;
+} CalSample_t;
+
+/**
+  * @brief  简单插入排序 (升序), 供取中值
+  */
+static void cal_sort_u16(uint16_t *buf, uint8_t n)
+{
+    uint8_t i, j;
+    for (i = 1; i < n; i++)
+    {
+        uint16_t v = buf[i];
+        j = i;
+        while ((j > 0) && (buf[j - 1U] > v))
+        {
+            buf[j] = buf[j - 1U];
+            j--;
+        }
+        buf[j] = v;
+    }
+}
+
+/**
+  * @brief  在屏幕坐标 (sx,sy) 画一个十字 (用 POINT_COLOR)
+  */
+static void cal_draw_cross(uint16_t sx, uint16_t sy, uint16_t color)
+{
+    POINT_COLOR = color;
+    LCD_DrawLine((uint16_t)(sx - 14U), sy, (uint16_t)(sx + 15U), sy);
+    LCD_DrawLine(sx, (uint16_t)(sy - 14U), sx, (uint16_t)(sy + 15U));
+}
+
+/**
+  * @brief  等待按下并采样一个校准点 (多次读数取中值)
+  * @retval 1=成功, 0=有效采样不足
+  */
+static uint8_t cal_sample_point(uint16_t *rx_out, uint16_t *ry_out)
+{
+    uint16_t rx[CAL_SAMPLE_CNT];
+    uint16_t ry[CAL_SAMPLE_CNT];
+    uint8_t valid = 0;
+    uint8_t i;
+
+    while (PEN_READ() != GPIO_PIN_RESET)    /* 等待按下 */
+    {
+        delay_ms(5);
+    }
+    delay_ms(40);                           /* 等待坐标稳定 */
+
+    for (i = 0; i < CAL_SAMPLE_CNT; i++)
+    {
+        uint16_t x, y;
+        if (TP_Read_XY2(&x, &y))
+        {
+            rx[valid] = x;
+            ry[valid] = y;
+            valid++;
+        }
+        delay_ms(8);
+    }
+
+    while (PEN_READ() == GPIO_PIN_RESET)    /* 等待松开 */
+    {
+        delay_ms(5);
+    }
+
+    if (valid < CAL_MIN_VALID)
+    {
+        return 0;
+    }
+    cal_sort_u16(rx, valid);
+    cal_sort_u16(ry, valid);
+    *rx_out = rx[valid / 2U];
+    *ry_out = ry[valid / 2U];
+    return 1;
+}
+
+/**
+  * @brief  触摸多点校准 (按需调用, 阻塞到全部点完)
+  * @note   屏幕依次出现 3x3 共 9 个十字, 用笔/手指逐个点击; 完成后用最小二乘
+  *         拟合 xfac/yfac/xoff/yoff, 并写入片内 Flash (只保留最近一条), 掉电不丢。
+  *         之后开机自动载入, 不再校准; 发现偏移时再次调用本函数即可更新。
+  *         须在 delay_init() 之后调用; 可在 main 调度器前或任务中调用。
+  */
+void TP_MultiPointCalibrate(void)
+{
+    CalSample_t pts[CAL_POINTS_NUM];
+    uint16_t sx[CAL_POINTS_NUM];
+    uint16_t sy[CAL_POINTS_NUM];
+    uint8_t i;
+    uint32_t n = 0;
+    uint32_t sum_rx = 0, sum_ry = 0, sum_sx = 0, sum_sy = 0;
+    uint32_t sum_rxrx = 0, sum_rxsx = 0, sum_ryry = 0, sum_rysy = 0;
+    float nf, den;
+    uint16_t save_pc, save_bc;
+
+    TP_Enable();        /* 确保触摸已初始化 (首次自动 TP_Init) */
+
+    /* 保存调用方当前的画笔/背景色, 校准结束后恢复, 保持调用方状态不变 */
+    save_pc = POINT_COLOR;
+    save_bc = BACK_COLOR;
+
+    /* 3x3 网格校准点 */
+    for (i = 0; i < CAL_POINTS_NUM; i++)
+    {
+        uint8_t col = (uint8_t)(i % 3U);
+        uint8_t row = (uint8_t)(i / 3U);
+        sx[i] = (col == 0U) ? CAL_MARGIN
+              : (col == 1U) ? (uint16_t)(LCD_W / 2U)
+              : (uint16_t)(LCD_W - CAL_MARGIN);
+        sy[i] = (row == 0U) ? CAL_MARGIN
+              : (row == 1U) ? (uint16_t)(LCD_H / 2U)
+              : (uint16_t)(LCD_H - CAL_MARGIN);
+    }
+
+    /* 提示 */
+    LCD_Clear(WHITE);
+    POINT_COLOR = BLACK;
+    BACK_COLOR = WHITE;
+    LCD_ShowString(10, 10, 16, "Calibrate: tap each cross", 0);
+
+    for (i = 0; i < CAL_POINTS_NUM; i++)
+    {
+        uint16_t rx = 0, ry = 0;
+        uint8_t ok = 0;
+
+        cal_draw_cross(sx[i], sy[i], RED);          /* 画当前点 (红色) */
+        LCD_ShowNum(10, 30, (uint32_t)(i + 1U), 1, 16);
+        LCD_ShowString(22, 30, 16, "/9", 0);
+
+        while (!ok)                                  /* 采样直到有效 */
+        {
+            ok = cal_sample_point(&rx, &ry);
+            if (!ok)
+            {
+                cal_draw_cross(sx[i], sy[i], WHITE);
+                delay_ms(300);
+                cal_draw_cross(sx[i], sy[i], RED);
+            }
+        }
+
+        cal_draw_cross(sx[i], sy[i], WHITE);         /* 抹掉十字 */
+        pts[n].sx = sx[i];
+        pts[n].sy = sy[i];
+        pts[n].rx = rx;
+        pts[n].ry = ry;
+        n++;
+    }
+
+    /* 最小二乘线性拟合: sx = xfac*rx + xoff, sy = yfac*ry + yoff */
+    for (i = 0; i < n; i++)
+    {
+        sum_rx   += pts[i].rx;
+        sum_ry   += pts[i].ry;
+        sum_sx   += pts[i].sx;
+        sum_sy   += pts[i].sy;
+        sum_rxrx += (uint32_t)pts[i].rx * pts[i].rx;
+        sum_rxsx += (uint32_t)pts[i].rx * pts[i].sx;
+        sum_ryry += (uint32_t)pts[i].ry * pts[i].ry;
+        sum_rysy += (uint32_t)pts[i].ry * pts[i].sy;
+    }
+    nf = (float)n;
+
+    den = nf * (float)sum_rxrx - (float)sum_rx * (float)sum_rx;
+    if (den != 0.0f)
+    {
+        tp_dev.xfac = (nf * (float)sum_rxsx - (float)sum_rx * (float)sum_sx) / den;
+        tp_dev.xoff = (int16_t)(((float)sum_sx - tp_dev.xfac * (float)sum_rx) / nf);
+    }
+    den = nf * (float)sum_ryry - (float)sum_ry * (float)sum_ry;
+    if (den != 0.0f)
+    {
+        tp_dev.yfac = (nf * (float)sum_rysy - (float)sum_ry * (float)sum_sy) / den;
+        tp_dev.yoff = (int16_t)(((float)sum_sy - tp_dev.yfac * (float)sum_ry) / nf);
+    }
+    tp_dev.touchtype = 0;
+
+    /* 写入 Flash (只保留最近一条), 更新序号 */
+    TP_Save_Adjdata();
+    g_cal_seq = CalStore_GetSeq();
+
+    /* 恢复调用方原有的画笔/背景色; 不主动清屏改色, 屏幕内容由调用方恢复
+       (App_TouchCalibrate 包装中强制 LVGL 重绘) */
+    POINT_COLOR = save_pc;
+    BACK_COLOR = save_bc;
+}

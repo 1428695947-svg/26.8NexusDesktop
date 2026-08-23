@@ -21,6 +21,10 @@
 #include "cal_store.h"
 #include "delay.h"
 
+#include "lvgl.h"
+#include "lv_port_disp.h"
+#include "lv_port_indev.h"
+
 /* ========================= 私有全局变量 ========================= */
 // 摇杆模块实例（由应用层持有）
 Joystick_HandleTypeDef hjoy;
@@ -35,10 +39,6 @@ static void App_KeyReleaseCallback(uint8_t keyId);
 static uint16_t s_draw_prev_x = 0;
 static uint16_t s_draw_prev_y = 0;
 static uint8_t  s_draw_prev_valid = 0;
-
-/* 触摸功能使能标志: 默认关闭, 调用 App_TouchEnable() 后才启动扫描/画图 */
-static volatile uint8_t s_touch_enabled = 0;
-static volatile uint8_t s_touch_inited = 0;
 
 /* 校准请求标志: PA2 按键 (key.c 中按键槽位 0) 短按置位, 触摸任务中执行 9 点校准 */
 static volatile uint8_t s_cal_request = 0;
@@ -76,17 +76,34 @@ void App_Init(void)
     delay_init();
     LCD_Init();
     LCD_Clear(RED);
-    POINT_COLOR = WHITE;
-    BACK_COLOR = RED;
-    LCD_ShowString(20, 20, 16, "ILI9488 HAL OK", 0);
-    LCD_ShowString(20, 40, 16, "F407VET6 SPI1 10.5M", 0);
-    LCD_ShowString(20, 60, 16, "Touch: Touch The Screen", 0);
+    POINT_COLOR = BLUE;
+    BACK_COLOR = BLACK;
 
-    App_TouchEnable();          /* 按需启动触摸 (首次自动 TP_Init) */
-    if (!App_TouchIsCalibrated())
-    {
-        App_TouchCalibrate();   /* 无存储校准时才校准 (9 点), 结果写 Flash */
-    }
+   TP_Enable();                /* 按需启动触摸 (首次自动 TP_Init) */
+   if (!App_TouchIsCalibrated())
+   {
+       App_TouchCalibrate();   /* 无存储校准时才校准 (9 点), 结果写 Flash */
+   }
+
+    lv_init();
+    lv_port_disp_init();
+    lv_port_indev_init();
+
+    // 按钮
+    lv_obj_t *myBtn = lv_btn_create(lv_scr_act());                               // 创建按钮; 父对象：当前活动屏幕
+    lv_obj_set_pos(myBtn, 10, 10);                                               // 设置坐标
+    lv_obj_set_size(myBtn, 120, 50);                                             // 设置大小
+   
+    // 按钮上的文本
+    lv_obj_t *label_btn = lv_label_create(myBtn);                                // 创建文本标签，父对象：上面的btn按钮
+    lv_obj_align(label_btn, LV_ALIGN_CENTER, 0, 0);                              // 对齐于：父对象
+    lv_label_set_text(label_btn, "Test");                                        // 设置标签的文本
+
+    // 独立的标签
+    lv_obj_t *myLabel = lv_label_create(lv_scr_act());                           // 创建文本标签; 父对象：当前活动屏幕
+    lv_label_set_text(myLabel, "Hello world!");                                  // 设置标签的文本
+    lv_obj_align(myLabel, LV_ALIGN_CENTER, 0, 0);                                // 对齐于：父对象
+    lv_obj_align_to(myBtn, myLabel, LV_ALIGN_OUT_TOP_MID, 0, -20);               // 对齐于：某对象
 }
 
 /**
@@ -96,6 +113,7 @@ void App_Init(void)
 void App_Tick1ms(void)
 {
     Key_ScanHandler();
+    lv_tick_inc(1);
 }
 
 /**
@@ -123,12 +141,7 @@ void App_TouchMonitorTask(void)
     uint32_t lastDbgTick = 0;
 
     for (;;) {
-        if (s_cal_request)          /* PA2 按键短按: 需要重新校准 */
-        {
-            s_cal_request = 0;
-            App_TouchCalibrate();   /* 阻塞到 9 点校准完成, 结果存 Flash */
-        }
-        if (s_touch_enabled)
+        if (TP_IsEnabled())
         {
             TP_UpdateDebug();       /* 扫描触摸并刷新调试变量 */
             App_TouchDraw();        /* 触摸画图: 按下画蓝点, 拖动连成线 */
@@ -140,40 +153,6 @@ void App_TouchMonitorTask(void)
         }
         osDelay(25);            /* 40Hz 采样 (加快跟踪, 减小移动时画点滞后) */
     }
-}
-
-/**
-  * @brief  按需开启触摸功能
-  * @note   首次调用会执行 TP_Init() (触摸 GPIO + EXTI3 中断配置), 之后
-  *         TouchMonitorTask 才开始扫描触摸、画图与刷新自检行。
-  *         必须在 delay_init() 之后调用 (TP_Init 内部使用 delay_us);
-  *         可在 main 调度器启动前调用, 也可在任意 FreeRTOS 任务中调用。
-  */
-void App_TouchEnable(void)
-{
-    if (s_touch_inited == 0)
-    {
-        TP_Init();
-        s_touch_inited = 1;
-    }
-    s_touch_enabled = 1;
-}
-
-/**
-  * @brief  关闭触摸功能 (停止扫描/画图/自检显示)
-  */
-void App_TouchDisable(void)
-{
-    s_touch_enabled = 0;
-}
-
-/**
-  * @brief  查询触摸功能是否已开启
-  * @retval 1=已开启, 0=未开启
-  */
-uint8_t App_TouchIsEnabled(void)
-{
-    return (uint8_t)s_touch_enabled;
 }
 
 /**
@@ -210,6 +189,25 @@ void App_TouchShowDbg(void)
     LCD_ShowNum(152,    (uint16_t)(LCD_H - 16), dbg_tp_x_raw, 4, 16);
     LCD_ShowString(196, (uint16_t)(LCD_H - 16), 16, "Y", 0);
     LCD_ShowNum(208,    (uint16_t)(LCD_H - 16), dbg_tp_y_raw, 4, 16);
+}
+
+/**
+  * @brief  图形化界面刷新
+  * @note   NONE
+  */
+void App_LvglTask(void)
+{
+    for(;;)
+    {
+        /* PA2 按键短按 (短按回调置位): 触摸已使能时才执行 9 点校准 */
+        if (TP_IsEnabled() && s_cal_request)
+        {
+            s_cal_request = 0;
+            App_TouchCalibrate();   /* 阻塞到校准完成, 结果写 Flash */
+        }
+        lv_task_handler();
+        osDelay(5);  /* 200Hz */
+    }
 }
 
 /**
@@ -278,201 +276,21 @@ void App_TouchDraw(void)
     s_draw_prev_valid = 1;
 }
 
-/* ==================== 多点校准参数 ==================== */
-#define CAL_POINTS_NUM   9U      /* 校准点数: 3x3 网格 (点越多越准) */
-#define CAL_MARGIN       30U     /* 边缘留白 (像素) */
-#define CAL_SAMPLE_CNT   5U      /* 每点采样次数 */
-#define CAL_MIN_VALID    3U      /* 每点最少有效采样数 */
-
-/* 校准点: 屏幕坐标 + 对应原始 AD */
-typedef struct
-{
-    uint16_t sx, sy;
-    uint16_t rx, ry;
-} CalSample_t;
-
 /**
-  * @brief  简单插入排序 (升序), 供取中值
-  */
-static void cal_sort_u16(uint16_t *buf, uint8_t n)
-{
-    uint8_t i, j;
-    for (i = 1; i < n; i++)
-    {
-        uint16_t v = buf[i];
-        j = i;
-        while ((j > 0) && (buf[j - 1U] > v))
-        {
-            buf[j] = buf[j - 1U];
-            j--;
-        }
-        buf[j] = v;
-    }
-}
-
-/**
-  * @brief  在屏幕坐标 (sx,sy) 画一个十字 (用 POINT_COLOR)
-  */
-static void cal_draw_cross(uint16_t sx, uint16_t sy, uint16_t color)
-{
-    POINT_COLOR = color;
-    LCD_DrawLine((uint16_t)(sx - 14U), sy, (uint16_t)(sx + 15U), sy);
-    LCD_DrawLine(sx, (uint16_t)(sy - 14U), sx, (uint16_t)(sy + 15U));
-}
-
-/**
-  * @brief  等待按下并采样一个校准点 (多次读数取中值)
-  * @retval 1=成功, 0=有效采样不足
-  */
-static uint8_t cal_sample_point(uint16_t *rx_out, uint16_t *ry_out)
-{
-    uint16_t rx[CAL_SAMPLE_CNT];
-    uint16_t ry[CAL_SAMPLE_CNT];
-    uint8_t valid = 0;
-    uint8_t i;
-
-    while (PEN_READ() != GPIO_PIN_RESET)    /* 等待按下 */
-    {
-        delay_ms(5);
-    }
-    delay_ms(40);                           /* 等待坐标稳定 */
-
-    for (i = 0; i < CAL_SAMPLE_CNT; i++)
-    {
-        uint16_t x, y;
-        if (TP_Read_XY2(&x, &y))
-        {
-            rx[valid] = x;
-            ry[valid] = y;
-            valid++;
-        }
-        delay_ms(8);
-    }
-
-    while (PEN_READ() == GPIO_PIN_RESET)    /* 等待松开 */
-    {
-        delay_ms(5);
-    }
-
-    if (valid < CAL_MIN_VALID)
-    {
-        return 0;
-    }
-    cal_sort_u16(rx, valid);
-    cal_sort_u16(ry, valid);
-    *rx_out = rx[valid / 2U];
-    *ry_out = ry[valid / 2U];
-    return 1;
-}
-
-/**
-  * @brief  触摸多点校准 (按需调用, 阻塞到全部点完)
-  * @note   屏幕依次出现 3x3 共 9 个十字, 用笔/手指逐个点击; 完成后用最小二乘
-  *         拟合 xfac/yfac/xoff/yoff, 并写入片内 Flash (只保留最近一条), 掉电不丢。
-  *         之后开机自动载入, 不再校准; 发现偏移时再次调用本函数即可更新。
-  *         须在 delay_init() 之后调用; 可在 main 调度器前或任务中调用。
+  * @brief  触摸多点校准 (应用层包装)
+  * @note   实际 9 点校准在驱动层 TP_MultiPointCalibrate() (touch.c) 中实现;
+  *         此处仅包一层 LVGL 显示更新开关, 避免校准期间 LVGL 刷新干扰屏幕。
   */
 void App_TouchCalibrate(void)
 {
-    CalSample_t pts[CAL_POINTS_NUM];
-    uint16_t sx[CAL_POINTS_NUM];
-    uint16_t sy[CAL_POINTS_NUM];
-    uint8_t i;
-    uint32_t n = 0;
-    uint32_t sum_rx = 0, sum_ry = 0, sum_sx = 0, sum_sy = 0;
-    uint32_t sum_rxrx = 0, sum_rxsx = 0, sum_ryry = 0, sum_rysy = 0;
-    float nf, den;
-
-    if (s_touch_inited == 0)
+    disp_disable_update();
+    TP_MultiPointCalibrate();
+    disp_enable_update();
+    /* 校准直接操作了 LCD, 强制 LVGL 整屏重绘, 恢复校准前的界面 */
+    if (lv_scr_act() != NULL)
     {
-        TP_Init();
-        s_touch_inited = 1;
+        lv_obj_invalidate(lv_scr_act());
     }
-
-    /* 3x3 网格校准点 */
-    for (i = 0; i < CAL_POINTS_NUM; i++)
-    {
-        uint8_t col = (uint8_t)(i % 3U);
-        uint8_t row = (uint8_t)(i / 3U);
-        sx[i] = (col == 0U) ? CAL_MARGIN
-              : (col == 1U) ? (uint16_t)(LCD_W / 2U)
-              : (uint16_t)(LCD_W - CAL_MARGIN);
-        sy[i] = (row == 0U) ? CAL_MARGIN
-              : (row == 1U) ? (uint16_t)(LCD_H / 2U)
-              : (uint16_t)(LCD_H - CAL_MARGIN);
-    }
-
-    /* 提示 */
-    LCD_Clear(WHITE);
-    POINT_COLOR = BLACK;
-    BACK_COLOR = WHITE;
-    LCD_ShowString(10, 10, 16, "Calibrate: tap each cross", 0);
-
-    for (i = 0; i < CAL_POINTS_NUM; i++)
-    {
-        uint16_t rx = 0, ry = 0;
-        uint8_t ok = 0;
-
-        cal_draw_cross(sx[i], sy[i], RED);          /* 画当前点 (红色) */
-        LCD_ShowNum(10, 30, (uint32_t)(i + 1U), 1, 16);
-        LCD_ShowString(22, 30, 16, "/9", 0);
-
-        while (!ok)                                  /* 采样直到有效 */
-        {
-            ok = cal_sample_point(&rx, &ry);
-            if (!ok)
-            {
-                cal_draw_cross(sx[i], sy[i], WHITE);
-                delay_ms(300);
-                cal_draw_cross(sx[i], sy[i], RED);
-            }
-        }
-
-        cal_draw_cross(sx[i], sy[i], WHITE);         /* 抹掉十字 */
-        pts[n].sx = sx[i];
-        pts[n].sy = sy[i];
-        pts[n].rx = rx;
-        pts[n].ry = ry;
-        n++;
-    }
-
-    /* 最小二乘线性拟合: sx = xfac*rx + xoff, sy = yfac*ry + yoff */
-    for (i = 0; i < n; i++)
-    {
-        sum_rx   += pts[i].rx;
-        sum_ry   += pts[i].ry;
-        sum_sx   += pts[i].sx;
-        sum_sy   += pts[i].sy;
-        sum_rxrx += (uint32_t)pts[i].rx * pts[i].rx;
-        sum_rxsx += (uint32_t)pts[i].rx * pts[i].sx;
-        sum_ryry += (uint32_t)pts[i].ry * pts[i].ry;
-        sum_rysy += (uint32_t)pts[i].ry * pts[i].sy;
-    }
-    nf = (float)n;
-
-    den = nf * (float)sum_rxrx - (float)sum_rx * (float)sum_rx;
-    if (den != 0.0f)
-    {
-        tp_dev.xfac = (nf * (float)sum_rxsx - (float)sum_rx * (float)sum_sx) / den;
-        tp_dev.xoff = (int16_t)(((float)sum_sx - tp_dev.xfac * (float)sum_rx) / nf);
-    }
-    den = nf * (float)sum_ryry - (float)sum_ry * (float)sum_ry;
-    if (den != 0.0f)
-    {
-        tp_dev.yfac = (nf * (float)sum_rysy - (float)sum_ry * (float)sum_sy) / den;
-        tp_dev.yoff = (int16_t)(((float)sum_sy - tp_dev.yfac * (float)sum_ry) / nf);
-    }
-    tp_dev.touchtype = 0;
-
-    /* 写入 Flash (只保留最近一条), 更新序号 */
-    TP_Save_Adjdata();
-    g_cal_seq = CalStore_GetSeq();
-
-    /* 完成提示, 恢复红色画布 */
-    LCD_Clear(RED);
-    POINT_COLOR = WHITE;
-    BACK_COLOR = RED;
-    LCD_ShowString(20, 20, 16, "Calibrated OK, Touch To Draw", 0);
 }
 
 /**
@@ -493,8 +311,9 @@ uint8_t App_TouchIsCalibrated(void)
   */
 static void App_JoystickKeyCallback(uint8_t keyId)
 {
-    /* PA2 按键 (key.c 中按键槽位 0, 对应 KEY_ID_0) 短按: 请求重新校准触摸 */
-    if (keyId == KEY_ID_0) {
+    /* PA2 按键 (key.c 中按键槽位 0, 对应 KEY_ID_0) 短按:
+       仅在触摸已使能时请求重新校准 */
+    if ((keyId == KEY_ID_0) && TP_IsEnabled()) {
         s_cal_request = 1;
     }
 }

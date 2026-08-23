@@ -89,4 +89,10 @@ void TP_Adj_Info_Show(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
                       uint16_t x2, uint16_t y2, uint16_t x3, uint16_t y3, uint16_t fac);
 void TP_UpdateDebug(void);   /* 移植新增: 扫描触摸并刷新调试全局变量 */
 
+/* ==================== 触摸使能/失能控制 (触摸模块自带) ==================== */
+void    TP_Enable(void);     /* 开启触摸: 首次调用自动执行 TP_Init(), 之后任务开始扫描/画图 */
+void    TP_Disable(void);    /* 关闭触摸: 停止扫描/画图 (引脚保持已初始化) */
+uint8_t TP_IsEnabled(void);  /* 查询触摸是否已开启: 1=开, 0=关 */
+void    TP_MultiPointCalibrate(void);  /* 9 点校准 (3x3 网格 + 最小二乘), 结果写 Flash */
+
 #endif

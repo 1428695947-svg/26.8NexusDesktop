@@ -25,6 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app.h"
 
 /* USER CODE END Includes */
 
@@ -45,6 +46,13 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+/* LVGL 界面渲染与处理任务 */
+osThreadId_t lvglTaskHandle;
+const osThreadAttr_t lvglTask_attributes = {
+  .name = "lvglTask",
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -57,6 +65,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+void LvglTask(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -96,6 +105,8 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  /* LVGL 界面渲染任务: 替换原 LCD 触摸/画图任务 */
+  lvglTaskHandle = osThreadNew(LvglTask, NULL, &lvglTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -114,16 +125,26 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  App_JoystickTask();
+   /* Infinite loop */
+  // for(;;)
+  // {
+  //   osDelay(1);
+  // }
   /* USER CODE END StartDefaultTask */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+/**
+  * @brief  LVGL 界面渲染任务入口
+  * @note   实际循环体在应用层 App_LvglTask() 中实现 (app.c)
+  */
+void LvglTask(void *argument)
+{
+  (void)argument;
+  App_LvglTask();
+}
 
 /* USER CODE END Application */
 
