@@ -75,16 +75,4 @@ nexusdesktop/lv_menu.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\core\lv_obj_class.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\core\lv_event.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\core\lv_group.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\core\..\misc\lv_ll.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\layouts\flex\lv_flex.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\layouts\flex\..\..\..\core\lv_obj.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\lv_label.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\core\lv_obj.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\font\lv_font.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\font\lv_symbol_def.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\draw\lv_draw.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\lv_btn.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\lv_img.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\widgets\..\misc\lv_fs.h
+  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\menu\..\..\..\core\..\misc\lv_ll.h

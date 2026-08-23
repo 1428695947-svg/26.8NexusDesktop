@@ -89,5 +89,4 @@ nexusdesktop/lv_list.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\list\..\..\..\widgets\..\misc\lv_txt.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\list\..\..\..\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\list\..\..\..\widgets\lv_img.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\list\..\..\..\widgets\..\misc\lv_fs.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\list\..\..\..\widgets\lv_btn.h

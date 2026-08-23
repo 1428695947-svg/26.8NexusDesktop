@@ -75,18 +75,4 @@ nexusdesktop/lv_calendar_header_dropdown.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\core\lv_obj_class.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\core\lv_event.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\core\lv_group.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\core\..\misc\lv_ll.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\lv_calendar.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\lv_btnmatrix.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\core\lv_obj.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\lv_dropdown.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\lv_label.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\..\core\lv_obj.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\..\font\lv_font.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\..\font\lv_symbol_def.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\widgets\..\widgets\..\draw\lv_draw.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\layouts\flex\lv_flex.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\layouts\flex\..\..\..\core\lv_obj.h
+  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\calendar\..\..\..\core\..\misc\lv_ll.h

@@ -96,29 +96,24 @@ nexusdesktop/lv_font_unscii_8.o: \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\font\lv_font_fmt_txt.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_arc.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_btn.h \
+  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_img.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\misc\lv_fs.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\font\lv_symbol_def.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\misc\lv_txt.h \
+  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_line.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_bar.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_dropdown.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_roller.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_textarea.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_canvas.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\widgets\lv_img.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\draw\lv_draw_img.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_switch.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\lv_api_map.h \

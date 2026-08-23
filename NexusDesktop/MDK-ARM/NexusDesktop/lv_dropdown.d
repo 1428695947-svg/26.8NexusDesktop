@@ -76,23 +76,4 @@ nexusdesktop/lv_dropdown.o: \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\lv_group.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\..\misc\lv_ll.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_dropdown.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\lv_label.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\..\core\lv_obj.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\..\font\lv_font.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\..\font\lv_symbol_def.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\widgets\..\draw\lv_draw.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_assert.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\draw\lv_draw.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\lv_indev.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\lv_disp.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\lv_theme.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\..\core\lv_obj.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\font\lv_symbol_def.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_anim.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_math.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_txt_ap.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\..\draw\lv_draw.h
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\lv_conf_internal.h
