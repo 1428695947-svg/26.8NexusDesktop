@@ -8,13 +8,16 @@
   ******************************************************************************
   * @attention
   * 1. 应用层只负责装配：按键/摇杆/定时器各驱动模块互不依赖
-  * 2. 按键回调运行在TIM5中断上下文，通知任务需使用FromISR接口
+  * 2. 按键回调（按下/单击/双击/释放）运行在TIM5中断上下文，
+  *    通过 FreeRTOS 队列（xQueueSendFromISR）投递 KeyEventMsg_t 给任务处理
   * 3. 集中在此处初始化，避免CubeMX重新生成main.c时中文注释乱码
   ******************************************************************************
   */
 
 #include "app.h"
 #include "cmsis_os.h"
+#include "FreeRTOS.h"
+#include "queue.h"
 #include "touch.h"
 #include "lcd.h"
 #include "gui.h"
@@ -30,10 +33,23 @@
 Joystick_HandleTypeDef hjoy;
 
 /* ========================= 私有函数声明 ========================= */
-static void App_JoystickKeyCallback(uint8_t keyId);
-static void App_KeyLongPressCallback(uint8_t keyId);
-static void App_KeyLongPressHoldCallback(uint8_t keyId);
+static void App_KeyEventPostFromISR(uint8_t keyId, Key_Event_t event);
+static void App_KeyPressDownCallback(uint8_t keyId);
+static void App_KeyClickCallback(uint8_t keyId);
+static void App_KeyDoubleClickCallback(uint8_t keyId);
 static void App_KeyReleaseCallback(uint8_t keyId);
+static void App_KeyEventHandler(KeyEventMsg_t *msg);
+
+/* ========================= 按键事件队列（应用层示例） =========================
+ * key.c 在 TIM5 1ms 中断中产生按键事件并调用回调，本层回调通过 FreeRTOS
+ * 队列（FromISR 接口）把 KeyEventMsg_t 投递给 App_KeyEventTask() 任务，
+ * 避免在中断上下文中直接处理业务逻辑、防止事件丢失。
+ */
+#define KEY_EVENT_QUEUE_LENGTH   8       // 队列深度（每条消息为 KeyEventMsg_t）
+QueueHandle_t g_keyEventQueue;          // 按键事件队列句柄（App_Init 中创建）
+
+// 调试用：各类事件累计计数（可在 Keil Watch 窗口观察）
+static volatile uint32_t s_keyEventCounts[4] = {0, 0, 0, 0};
 
 /* 触摸画图状态: 上一笔的坐标, 用于连续触摸时连线 */
 static uint16_t s_draw_prev_x = 0;
@@ -56,10 +72,13 @@ void App_Init(void)
     Key_Init();
     JOY_Init(&hjoy);
 
-    /* 注册按键回调（短按/长按/长按保持/释放） */
-    Key_SetShortPressCallback(App_JoystickKeyCallback);
-    Key_SetLongPressCallback(App_KeyLongPressCallback);
-    Key_SetLongPressHoldCallback(App_KeyLongPressHoldCallback);
+    /* 创建按键事件队列（ISR入队 -> App_KeyEventTask 任务处理） */
+    g_keyEventQueue = xQueueCreate(KEY_EVENT_QUEUE_LENGTH, sizeof(KeyEventMsg_t));
+
+    /* 注册按键回调（按下/单击/双击/释放） */
+    Key_SetPressDownCallback(App_KeyPressDownCallback);
+    Key_SetClickCallback(App_KeyClickCallback);
+    Key_SetDoubleClickCallback(App_KeyDoubleClickCallback);
     Key_SetReleaseCallback(App_KeyReleaseCallback);
 
     /* 启动TIM5 1ms周期中断，驱动按键扫描 */
@@ -305,46 +324,127 @@ uint8_t App_TouchIsCalibrated(void)
 /* ========================= 私有函数实现 ========================= */
 
 /**
-  * @brief  按键短按回调
+  * @brief  按键事件入队（供各回调调用）
+  * @param  keyId: 按键ID
+  * @param  event: 事件类型（Key_Event_t）
+  * @retval None
+  * @note   运行在TIM5中断上下文中，必须使用 xQueueSendFromISR
+  */
+static void App_KeyEventPostFromISR(uint8_t keyId, Key_Event_t event)
+{
+    KeyEventMsg_t msg;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    if (g_keyEventQueue == NULL) {
+        return;
+    }
+
+    msg.keyId = keyId;
+    msg.eventType = (uint8_t)event;
+
+    // 发送失败仅发生在队列满时（可适当加大 KEY_EVENT_QUEUE_LENGTH）
+    xQueueSendFromISR(g_keyEventQueue, &msg, &xHigherPriorityTaskWoken);
+
+    // 若唤醒高优先级任务，则请求任务切换
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+/**
+  * @brief  按键按下回调
   * @param  keyId: 按键ID
   * @note   运行在TIM5中断上下文中
   */
-static void App_JoystickKeyCallback(uint8_t keyId)
+static void App_KeyPressDownCallback(uint8_t keyId)
 {
-    /* PA2 按键 (key.c 中按键槽位 0, 对应 KEY_ID_0) 短按:
-       仅在触摸已使能时请求重新校准 */
-    if ((keyId == KEY_ID_0) && TP_IsEnabled()) {
-        s_cal_request = 1;
-    }
+    App_KeyEventPostFromISR(keyId, KEY_EVENT_PRESS_DOWN);
 }
 
 /**
-  * @brief  按键长按回调（预留）
+  * @brief  按键单击回调
   * @param  keyId: 按键ID
+  * @note   运行在TIM5中断上下文中
   */
-static void App_KeyLongPressCallback(uint8_t keyId)
+static void App_KeyClickCallback(uint8_t keyId)
 {
-    (void)keyId;
-    // TODO: 长按功能，按需实现
+    App_KeyEventPostFromISR(keyId, KEY_EVENT_CLICK);
 }
 
 /**
-  * @brief  按键长按保持回调（预留）
+  * @brief  按键双击回调
   * @param  keyId: 按键ID
+  * @note   运行在TIM5中断上下文中
   */
-static void App_KeyLongPressHoldCallback(uint8_t keyId)
+static void App_KeyDoubleClickCallback(uint8_t keyId)
 {
-    if (keyId == KEY_ID_2) {        // 摇杆Z轴按键：长按保持功能待接入
-        // TODO: 按需实现
-    }
+    App_KeyEventPostFromISR(keyId, KEY_EVENT_DOUBLE_CLICK);
 }
 
 /**
-  * @brief  按键释放回调（预留）
+  * @brief  按键释放回调
   * @param  keyId: 按键ID
+  * @note   运行在TIM5中断上下文中
   */
 static void App_KeyReleaseCallback(uint8_t keyId)
 {
-    (void)keyId;
-    // TODO: 释放功能，按需实现
+    App_KeyEventPostFromISR(keyId, KEY_EVENT_RELEASE);
+}
+
+/**
+  * @brief  按键事件处理（任务上下文，应用层示例）
+  * @param  msg: 从队列取出的按键事件消息
+  * @retval None
+  * @note   按需实现具体业务（如双击返回桌面、单击选中、按下音效反馈等）
+  */
+static void App_KeyEventHandler(KeyEventMsg_t *msg)
+{
+    if (msg == NULL) {
+        return;
+    }
+
+    // 调试用事件计数（可在 Keil Watch 窗口观察 s_keyEventCounts[0~3]）
+    if (msg->eventType < 4U) {
+        s_keyEventCounts[msg->eventType]++;
+    }
+
+    switch (msg->eventType) {
+        case KEY_EVENT_PRESS_DOWN:      // 0: 按下
+            // TODO: 按下反馈（如点击音效/界面高亮）
+            break;
+
+        case KEY_EVENT_CLICK:           // 1: 单击
+            if (msg->keyId == KEY_ID_0) {
+                // TODO: 摇杆Z轴单击功能
+            }
+            break;
+
+        case KEY_EVENT_DOUBLE_CLICK:    // 2: 双击
+            if (msg->keyId == KEY_ID_0) {
+                // TODO: 摇杆Z轴双击功能（如返回桌面）
+            }
+            break;
+
+        case KEY_EVENT_RELEASE:         // 3: 释放
+            // TODO: 释放反馈
+            break;
+
+        default:
+            break;
+    }
+}
+
+/**
+  * @brief  按键事件消费任务（FreeRTOS）
+  * @retval None
+  * @note   阻塞接收按键事件队列消息并处理；
+  *         任务入口在 freertos.c 的 USER CODE RTOS_THREADS 区创建
+  */
+void App_KeyEventTask(void)
+{
+    KeyEventMsg_t msg;
+
+    for (;;) {
+        if (xQueueReceive(g_keyEventQueue, &msg, portMAX_DELAY) == pdPASS) {
+            App_KeyEventHandler(&msg);
+        }
+    }
 }

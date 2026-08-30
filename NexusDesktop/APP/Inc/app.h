@@ -21,9 +21,18 @@ extern "C" {
 /* ========================= 外部变量声明 ========================= */
 extern Joystick_HandleTypeDef hjoy;
 
+/* ========================= 按键事件消息（应用层接口） ========================= */
+// 按键回调（TIM5中断上下文）通过 FreeRTOS 队列发送本消息给任务处理；
+// eventType 取值与 key.h 中 Key_Event_t 枚举一一对应
+typedef struct {
+    uint8_t keyId;      // 按键ID（KEY_ID_0 / KEY_ID_1 / KEY_ID_2）
+    uint8_t eventType;  // 0:PRESS_DOWN, 1:CLICK, 2:DOUBLE_CLICK, 3:RELEASE
+} KeyEventMsg_t;
+
 /* ========================= 公共函数声明 ========================= */
 void App_Init(void);
 void App_Tick1ms(void);
+void App_KeyEventTask(void);       /* 按键事件消费任务 (FreeRTOS队列接收并处理) */
 void App_JoystickTask(void);
 void App_LvglTask(void);           /* LVGL 界面重绘与处理任务 */
 void App_CreatePaintUI(void);      /* 创建 LVGL 画画板 UI */

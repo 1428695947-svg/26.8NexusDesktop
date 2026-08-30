@@ -54,6 +54,14 @@ const osThreadAttr_t lvglTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+/* 按键事件消费任务（key.c 回调 -> FreeRTOS队列 -> 本任务处理） */
+osThreadId_t keyEventTaskHandle;
+const osThreadAttr_t keyEventTask_attributes = {
+  .name = "keyEventTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -66,6 +74,7 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 void LvglTask(void *argument);
+void KeyEventTask(void *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -107,6 +116,8 @@ void MX_FREERTOS_Init(void) {
   /* add threads, ... */
   /* LVGL 界面渲染任务: 替换原 LCD 触摸/画图任务 */
   lvglTaskHandle = osThreadNew(LvglTask, NULL, &lvglTask_attributes);
+  /* 按键事件消费任务: 处理按键队列消息 */
+  keyEventTaskHandle = osThreadNew(KeyEventTask, NULL, &keyEventTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -144,6 +155,16 @@ void LvglTask(void *argument)
 {
   (void)argument;
   App_LvglTask();
+}
+
+/**
+  * @brief  按键事件消费任务入口
+  * @note   实际循环体在应用层 App_KeyEventTask() 中实现 (app.c)
+  */
+void KeyEventTask(void *argument)
+{
+  (void)argument;
+  App_KeyEventTask();
 }
 
 /* USER CODE END Application */
