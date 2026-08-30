@@ -99,11 +99,12 @@ nexusdesktop/lv_font_montserrat_22.o: \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_btn.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_img.h \
+  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\misc\lv_fs.h \
+  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\font\lv_symbol_def.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_line.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\font\..\..\src\widgets\lv_checkbox.h \

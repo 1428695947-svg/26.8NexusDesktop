@@ -100,11 +100,12 @@ nexusdesktop/lv_port_indev.o: \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_btn.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_img.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_fs.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\font\lv_symbol_def.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_line.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_checkbox.h \
@@ -209,7 +210,7 @@ nexusdesktop/lv_port_indev.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\span\lv_span.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\span\..\..\..\lvgl.h \
   ..\Middlewares\Third_Party\LVGL\examples\porting\..\..\lvgl.h \
-  ..\Hardware\lcd\touch.h ..\Core\Inc\main.h \
+  ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal.h \
   ..\Core\Inc\stm32f4xx_hal_conf.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_rcc.h \
@@ -237,4 +238,5 @@ nexusdesktop/lv_port_indev.o: \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_spi.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim_ex.h \
-  ..\Hardware\lcd\lcd.h
+  ..\Core\Inc\tim.h ..\Hardware\Inc\key.h ..\Hardware\Inc\joystick.h \
+  ..\Core\Inc\adc.h

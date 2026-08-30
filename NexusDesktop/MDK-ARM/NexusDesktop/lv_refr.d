@@ -88,4 +88,11 @@ nexusdesktop/lv_refr.o: \
   ..\Middlewares\Third_Party\LVGL\src\core\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\others\snapshot\lv_snapshot.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\others\snapshot\..\..\..\lv_conf_internal.h \
-  ..\Middlewares\Third_Party\LVGL\src\core\..\extra\others\snapshot\..\..\..\core\lv_obj.h
+  ..\Middlewares\Third_Party\LVGL\src\core\..\extra\others\snapshot\..\..\..\core\lv_obj.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\lv_label.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\..\lv_conf_internal.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\..\core\lv_obj.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\..\font\lv_font.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\..\font\lv_symbol_def.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\..\misc\lv_txt.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\widgets\..\draw\lv_draw.h

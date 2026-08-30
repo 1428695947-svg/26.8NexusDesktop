@@ -39,9 +39,10 @@ nexusdesktop/app.o: ..\APP\Src\app.c ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Middlewares\Third_Party\FreeRTOS\Source\include\task.h \
   ..\Middlewares\Third_Party\FreeRTOS\Source\include\list.h \
   ..\Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os2.h \
+  ..\Middlewares\Third_Party\FreeRTOS\Source\include\queue.h \
   ..\Hardware\lcd\touch.h ..\Hardware\lcd\lcd.h ..\Hardware\lcd\gui.h \
   ..\Hardware\lcd\cal_store.h ..\Hardware\lcd\delay.h \
-  ..\Middlewares\Third_Party\LVGL\lvgl.h \
+  ..\Hardware\Inc\flash_store.h ..\Middlewares\Third_Party\LVGL\lvgl.h \
   ..\Middlewares\Third_Party\LVGL\src\misc\lv_log.h \
   ..\Middlewares\Third_Party\LVGL\src\misc\..\lv_conf_internal.h \
   ..\Middlewares\Third_Party\LVGL\src\misc\..\lv_conf_kconfig.h \
@@ -140,11 +141,12 @@ nexusdesktop/app.o: ..\APP\Src\app.c ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_btn.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_img.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_fs.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\font\lv_symbol_def.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_line.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_checkbox.h \
@@ -249,4 +251,5 @@ nexusdesktop/app.o: ..\APP\Src\app.c ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\span\lv_span.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\span\..\..\..\lvgl.h \
   ..\Middlewares\Third_Party\LVGL\examples\porting\lv_port_disp.h \
-  ..\Middlewares\Third_Party\LVGL\examples\porting\lv_port_indev.h
+  ..\Middlewares\Third_Party\LVGL\examples\porting\lv_port_indev.h \
+  ..\APP\GUI\gui_guider.h ..\APP\GUI\custom.h

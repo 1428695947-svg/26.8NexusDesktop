@@ -100,11 +100,12 @@ nexusdesktop/lv_png.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\lv_btn.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\lv_img.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\misc\lv_fs.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\font\lv_symbol_def.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\lv_line.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\png\..\..\..\..\src\widgets\lv_checkbox.h \

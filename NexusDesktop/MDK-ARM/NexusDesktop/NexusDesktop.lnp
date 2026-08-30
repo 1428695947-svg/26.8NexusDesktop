@@ -240,7 +240,18 @@
 "nexusdesktop\lcd_spi.o"
 "nexusdesktop\delay.o"
 "nexusdesktop\cal_store.o"
+"nexusdesktop\flash_store.o"
 "nexusdesktop\app.o"
+"nexusdesktop\gui_guider.o"
+"nexusdesktop\setup_scr_login.o"
+"nexusdesktop\setup_scr_desktop.o"
+"nexusdesktop\widgets_init.o"
+"nexusdesktop\events_init.o"
+"nexusdesktop\custom.o"
+"nexusdesktop\img_cat_cursor.o"
+"nexusdesktop\img_tom_cursor.o"
+"nexusdesktop\img_hand_cursor.o"
+"nexusdesktop\lv_font_sourcehan18_custom.o"
 --strict --scatter "NexusDesktop\NexusDesktop.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers

@@ -101,11 +101,12 @@ nexusdesktop/lv_win.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\lv_btn.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\core\lv_obj.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\lv_img.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\misc\lv_fs.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\lv_label.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\font\lv_font.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\font\lv_symbol_def.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\misc\lv_txt.h \
-  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\..\draw\lv_draw.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\lv_line.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\win\..\..\..\..\src\widgets\lv_checkbox.h \
