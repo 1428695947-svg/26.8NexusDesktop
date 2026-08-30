@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stddef.h>
 
-#define CAL_SECTOR_ADDR   0x08060000UL   /* F407VE 最后 128KB 扇区 (扇区7) */
+#define CAL_SECTOR_ADDR   0x08040000UL   /* F407VE 扇区6 (密码存储让出最后扇区7) */
 #define CAL_SECTOR_SIZE   (128UL * 1024UL)
 #define CAL_MAGIC         0x43414C31UL   /* 'CAL1' */
 
@@ -79,7 +79,7 @@ static void cal_erase_sector(void)
 
     HAL_FLASH_Unlock();
     erase.TypeErase = FLASH_TYPEERASE_SECTORS;
-    erase.Sector = FLASH_SECTOR_7;
+    erase.Sector = FLASH_SECTOR_6;
     erase.NbSectors = 1;
     erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     HAL_FLASHEx_Erase(&erase, &err);

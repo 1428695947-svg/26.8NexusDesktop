@@ -6,7 +6,7 @@
   *          [magic 4B][seq 4B][len 4B][password 21B][pad 3B][crc32 4B]
   *          - FlashStore_SavePassword(): 擦除整个扇区后写入新记录
   *          - FlashStore_LoadPassword() : 读扇区起始记录, 校验 magic+CRC, 载入
-  *          - 使用扇区6 (0x08040000), 与触摸校准的扇区7互不冲突
+ *          - 使用片内 Flash 最末尾 (扇区7 尾部 0x0807FF00), 避免后期程序增长覆盖
   ******************************************************************************
   */
 
@@ -14,8 +14,8 @@
 #include <string.h>
 #include <stddef.h>
 
-#define FLASH_SECTOR_ADDR    0x08040000UL   /* F407VE 扇区6 (0x08040000 ~ 0x0805FFFF) */
-#define FLASH_SECTOR_NUM     FLASH_SECTOR_6
+#define FLASH_SECTOR_ADDR    0x0807FF00UL   /* F407VE 片内 Flash 最末尾 (扇区7 尾部) */
+#define FLASH_SECTOR_NUM     FLASH_SECTOR_7
 #define FLASH_MAGIC          0x464C5331UL   /* 'FLS1' */
 
 #define PWD_LEN_MAX          FLASH_PWD_BUF  /* 21 字节 (20 字符 + '\0') */

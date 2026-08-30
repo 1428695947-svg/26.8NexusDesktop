@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Hardware/Inc;../Hardware/lcd;../APP/Inc;../Middlewares/Third_Party/LVGL;../Middlewares/Third_Party/LVGL/src;../Middlewares/Third_Party/LVGL/examples/porting</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Hardware/Inc;../Hardware/lcd;../APP/Inc;../APP/GUI;../Middlewares/Third_Party/LVGL;../Middlewares/Third_Party/LVGL/src;../Middlewares/Third_Party/LVGL/examples/porting</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -2620,6 +2620,16 @@
               <FileType>5</FileType>
               <FilePath>..\Hardware\lcd\cal_store.h</FilePath>
             </File>
+            <File>
+              <FileName>flash_store.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Hardware/Src/flash_store.c</FilePath>
+            </File>
+            <File>
+              <FileName>flash_store.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Hardware\Inc\flash_store.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -2629,6 +2639,96 @@
               <FileName>app.c</FileName>
               <FileType>1</FileType>
               <FilePath>../APP/Src/app.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>APP/GUI</GroupName>
+          <Files>
+            <File>
+              <FileName>gui_guider.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/gui_guider.c</FilePath>
+            </File>
+            <File>
+              <FileName>setup_scr_login.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/setup_scr_login.c</FilePath>
+            </File>
+            <File>
+              <FileName>setup_scr_desktop.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/setup_scr_desktop.c</FilePath>
+            </File>
+            <File>
+              <FileName>widgets_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/widgets_init.c</FilePath>
+            </File>
+            <File>
+              <FileName>events_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/events_init.c</FilePath>
+            </File>
+            <File>
+              <FileName>custom.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/custom.c</FilePath>
+            </File>
+            <File>
+              <FileName>img_cat_cursor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/img_cat_cursor.c</FilePath>
+            </File>
+            <File>
+              <FileName>img_tom_cursor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/img_tom_cursor.c</FilePath>
+            </File>
+            <File>
+              <FileName>img_hand_cursor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/img_hand_cursor.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_font_sourcehan18_custom.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/GUI/guider_fonts/lv_font_sourcehan18_custom.c</FilePath>
+            </File>
+            <File>
+              <FileName>gui_guider.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/gui_guider.h</FilePath>
+            </File>
+            <File>
+              <FileName>widgets_init.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/widgets_init.h</FilePath>
+            </File>
+            <File>
+              <FileName>events_init.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/events_init.h</FilePath>
+            </File>
+            <File>
+              <FileName>custom.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/custom.h</FilePath>
+            </File>
+            <File>
+              <FileName>cursor_hotspot.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/cursor_hotspot.h</FilePath>
+            </File>
+            <File>
+              <FileName>tom_hotspot.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/tom_hotspot.h</FilePath>
+            </File>
+            <File>
+              <FileName>hand_hotspot.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../APP/GUI/hand_hotspot.h</FilePath>
             </File>
           </Files>
         </Group>

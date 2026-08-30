@@ -3,7 +3,7 @@
   * @file    flash_store.h
   * @brief   掉电保存驱动 - 密码等配置项的片内 Flash 持久化存储
   * @note    与 key 模块放置规则一致: 头文件在 Hardware/Inc, 源文件在 Hardware/Src。
-  *          使用 STM32F407VET6 片内 Flash 扇区6 (0x08040000, 128KB), 掉电不丢失。
+  *          使用 STM32F407VET6 片内 Flash 最末尾 (扇区7 尾部), 掉电不丢失。
   ******************************************************************************
   */
 #ifndef __FLASH_STORE_H

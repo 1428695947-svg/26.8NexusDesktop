@@ -21,6 +21,11 @@ extern "C" {
 /* ========================= 外部变量声明 ========================= */
 extern Joystick_HandleTypeDef hjoy;
 
+/* 鼠标输入状态 (由 App_MouseUpdate() 维护, 供 LVGL 指针输入设备读取) */
+extern volatile int     g_mouse_x;
+extern volatile int     g_mouse_y;
+extern volatile uint8_t g_mouse_pressed;
+
 /* ========================= 按键事件消息（应用层接口） ========================= */
 // 按键回调（TIM5中断上下文）通过 FreeRTOS 队列发送本消息给任务处理；
 // eventType 取值与 key.h 中 Key_Event_t 枚举一一对应
@@ -31,6 +36,9 @@ typedef struct {
 
 /* ========================= 公共函数声明 ========================= */
 void App_Init(void);
+void App_GuiInit(void);            /* GUI Guider 界面初始化 (登录/桌面 + 小猫光标 + 密码 Flash) */
+void App_MouseUpdate(void);        /* 摇杆/触摸/PA2 -> 鼠标坐标与按下状态 */
+void App_ProcessInputEvents(void); /* 消费输入事件队列, 驱动 LVGL 指针点击/长按重复 */
 void App_Tick1ms(void);
 void App_KeyEventTask(void);       /* 按键事件消费任务 (FreeRTOS队列接收并处理) */
 void App_JoystickTask(void);

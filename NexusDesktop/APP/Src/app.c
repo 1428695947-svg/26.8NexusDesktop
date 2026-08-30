@@ -23,10 +23,13 @@
 #include "gui.h"
 #include "cal_store.h"
 #include "delay.h"
+#include "flash_store.h"
 
 #include "lvgl.h"
 #include "lv_port_disp.h"
 #include "lv_port_indev.h"
+#include "gui_guider.h"
+#include "custom.h"
 
 /* ========================= 私有全局变量 ========================= */
 // 摇杆模块实例（由应用层持有）
@@ -56,8 +59,77 @@ static uint16_t s_draw_prev_x = 0;
 static uint16_t s_draw_prev_y = 0;
 static uint8_t  s_draw_prev_valid = 0;
 
-/* 校准请求标志: PA2 按键 (key.c 中按键槽位 0) 短按置位, 触摸任务中执行 9 点校准 */
-static volatile uint8_t s_cal_request = 0;
+/* 鼠标状态: 由 App_MouseUpdate() 维护, 供 LVGL 指针输入设备读取 */
+volatile int     g_mouse_x = 160;
+volatile int     g_mouse_y = 240;
+volatile uint8_t g_mouse_pressed = 0;
+
+/* 摇杆鼠标速度映射:
+ * 摇杆驱动已把归一化值做平方 (JOY_ApplyCurve), hjoy.x_norm/y_norm 即二次曲线
+ * (-1.0~1.0)。乘以 MOUSE_STEP 得到每帧像素位移, 即"摇杆偏移量 -> 鼠标位移
+ * (-50 ~ +50 pixels/frame)"。满推约 MOUSE_STEP*200 px/s。 */
+#define MOUSE_STEP 50.0f
+
+/* ========================= 输入事件队列 =========================
+ * 触摸输入先转为事件, 由 LVGL 主循环(App_ProcessInputEvents)统一消费;
+ * 实体按键 PA2 由 key.c V2.0 判定后经 FreeRTOS 队列 -> App_KeyEventHandler
+ * 设置 s_pa2_btn_down 等标志, 同样由 LVGL 任务消费。
+ * - 线程安全: 单核 + __disable_irq 保护, 环形缓冲。
+ */
+typedef enum {
+    IN_EV_PRESS   = 1,
+    IN_EV_RELEASE = 2
+} InEvType_t;
+
+typedef struct {
+    uint8_t  type;
+    int16_t  x;
+    int16_t  y;
+    uint32_t ts;
+} InEv_t;
+
+#define IN_EVQ_SIZE 16
+static InEv_t         s_evq[IN_EVQ_SIZE];
+static volatile uint8_t s_evq_head = 0;
+static volatile uint8_t s_evq_tail = 0;
+
+/* 入队 (可在 ISR 或任务中调用) */
+static void in_evq_push(uint8_t type, int16_t x, int16_t y)
+{
+    uint8_t n = (uint8_t)((s_evq_head + 1U) % IN_EVQ_SIZE);
+    __disable_irq();
+    if (n == s_evq_tail) {          /* 队列满, 丢弃 */
+        __enable_irq();
+        return;
+    }
+    s_evq[s_evq_head].type = type;
+    s_evq[s_evq_head].x    = x;
+    s_evq[s_evq_head].y    = y;
+    s_evq[s_evq_head].ts   = HAL_GetTick();
+    s_evq_head = n;
+    __enable_irq();
+}
+
+/* 出队 */
+static int in_evq_pop(InEv_t *out)
+{
+    int ok = 0;
+    __disable_irq();
+    if (s_evq_tail != s_evq_head) {
+        *out = s_evq[s_evq_tail];
+        s_evq_tail = (uint8_t)((s_evq_tail + 1U) % IN_EVQ_SIZE);
+        ok = 1;
+    }
+    __enable_irq();
+    return ok;
+}
+
+/* 鼠标按键状态 (按键事件任务设置, LVGL 任务消费) */
+static volatile uint8_t s_pa2_btn_down      = 0;   /* PA2 左键是否按下 */
+static volatile uint8_t s_click_pending     = 0;   /* 单击确认事件待处理 */
+static volatile uint8_t s_double_click_pending = 0;/* 双击(右键)事件待处理 */
+static uint8_t  s_touch_down = 0;                 /* 触摸是否按下 */
+static uint8_t  s_tp_prev    = 0;                 /* 触摸上一周期是否按下 */
 
 /* ========================= 公共函数实现 ========================= */
 
@@ -108,21 +180,11 @@ void App_Init(void)
     lv_port_disp_init();
     lv_port_indev_init();
 
-    // 按钮
-    lv_obj_t *myBtn = lv_btn_create(lv_scr_act());                               // 创建按钮; 父对象：当前活动屏幕
-    lv_obj_set_pos(myBtn, 10, 10);                                               // 设置坐标
-    lv_obj_set_size(myBtn, 120, 50);                                             // 设置大小
-   
-    // 按钮上的文本
-    lv_obj_t *label_btn = lv_label_create(myBtn);                                // 创建文本标签，父对象：上面的btn按钮
-    lv_obj_align(label_btn, LV_ALIGN_CENTER, 0, 0);                              // 对齐于：父对象
-    lv_label_set_text(label_btn, "Test");                                        // 设置标签的文本
-
-    // 独立的标签
-    lv_obj_t *myLabel = lv_label_create(lv_scr_act());                           // 创建文本标签; 父对象：当前活动屏幕
-    lv_label_set_text(myLabel, "Hello world!");                                  // 设置标签的文本
-    lv_obj_align(myLabel, LV_ALIGN_CENTER, 0, 0);                                // 对齐于：父对象
-    lv_obj_align_to(myBtn, myLabel, LV_ALIGN_OUT_TOP_MID, 0, -20);               // 对齐于：某对象
+    /* ==================== GUI Guider 界面初始化 ====================
+     * 加载登录/桌面界面、密码 Flash 存储、小猫光标。
+     * 之后的输入由摇杆/触摸/PA2 控制鼠标, 见 App_MouseUpdate()。
+     */
+    App_GuiInit();
 }
 
 /**
@@ -131,6 +193,8 @@ void App_Init(void)
   */
 void App_Tick1ms(void)
 {
+    /* PA2 由 key.c (V2.0) 在 TIM5 中断内完成消抖/单击/双击判定并回调入队,
+     * 这里不再直接读取 GPIO, 只驱动按键扫描与 LVGL 时钟。 */
     Key_ScanHandler();
     lv_tick_inc(1);
 }
@@ -218,15 +282,138 @@ void App_LvglTask(void)
 {
     for(;;)
     {
-        /* PA2 按键短按 (短按回调置位): 触摸已使能时才执行 9 点校准 */
-        if (TP_IsEnabled() && s_cal_request)
-        {
-            s_cal_request = 0;
-            App_TouchCalibrate();   /* 阻塞到校准完成, 结果写 Flash */
-        }
+        App_MouseUpdate();      /* 根据摇杆/触摸/PA2 更新鼠标坐标与按下状态 */
+        App_ProcessInputEvents();/* 消费输入事件队列, 驱动 LVGL 点击 (含长按重复) */
         lv_task_handler();
         osDelay(5);  /* 200Hz */
     }
+}
+
+/**
+  * @brief  GUI 界面初始化 (应用层装配)
+  * @note   载入掉电保存的密码, 创建登录/桌面界面与小猫光标。
+  *         必须在 lv_init/lv_port_disp_init/lv_port_indev_init 之后调用。
+  */
+void App_GuiInit(void)
+{
+    FlashStore_Init();          /* 载入(或首次写入默认)密码到 Flash */
+    setup_ui(&guider_ui);       /* GUI Guider 生成的界面装配 */
+    custom_init(&guider_ui);    /* 自定义回调: 显示密码/登录/小猫光标 */
+    gui_cursor_set_pos(g_mouse_x, g_mouse_y);
+}
+
+/**
+  * @brief  鼠标输入更新 (由 LVGL 任务周期调用)
+  * @note   - 触摸: 按下时把鼠标坐标吸附到触摸点, 并视为鼠标按下
+  *         - 摇杆: 按 x_norm/y_norm 增量移动鼠标 (空闲与按下均移动, 按下即拖拽)
+  *         - PA2 : 左键按下/释放由 key.c 事件驱动 (App_KeyEventHandler)
+  */
+void App_MouseUpdate(void)
+{
+    static float s_mouse_fx = 0.0f;   /* 低速段浮点累加器 (保留小数, 实现细腻移动) */
+    static float s_mouse_fy = 0.0f;
+    int     new_x = (int)g_mouse_x;
+    int     new_y = (int)g_mouse_y;
+    uint8_t touched = 0;
+
+    /* 触摸: 点击坐标即鼠标当前坐标 (位置更新由这里负责, 按下事件走队列) */
+    if (TP_IsEnabled() && TP_Scan(0))
+    {
+        touched = 1;
+        s_mouse_fx = 0.0f;      /* 触摸接管时清空摇杆累加器, 避免电量残留跳变 */
+        s_mouse_fy = 0.0f;
+        new_x = (int)tp_dev.x;
+        new_y = (int)tp_dev.y;
+    }
+
+    /* 触摸边沿 -> 仅入队事件 (不在轮询里直接操作 UI) */
+    if (touched != s_tp_prev)
+    {
+        if (touched) {
+            in_evq_push(IN_EV_PRESS,   (int16_t)new_x, (int16_t)new_y);
+        }
+        else {
+            in_evq_push(IN_EV_RELEASE, (int16_t)new_x, (int16_t)new_y);
+        }
+    }
+    s_tp_prev = touched;
+
+    /* 摇杆移动: 未触摸时始终移动指针。
+     * 若按键处于按下状态, 移动即进入拖拽模式 (拖拽 > 点击)。 */
+    if (!touched)
+    {
+        s_mouse_fx += hjoy.x_norm * MOUSE_STEP;
+        s_mouse_fy += hjoy.y_norm * MOUSE_STEP;
+        int dx = (int)s_mouse_fx;
+        int dy = (int)s_mouse_fy;
+        s_mouse_fx -= (float)dx;
+        s_mouse_fy -= (float)dy;
+        new_x += dx;
+        new_y += dy;
+    }
+
+    /* 边界保护 (屏幕 320x480) */
+    if (new_x < 0) new_x = 0;
+    if (new_x > 319) new_x = 319;
+    if (new_y < 0) new_y = 0;
+    if (new_y > 479) new_y = 479;
+
+    g_mouse_x = new_x;
+    g_mouse_y = new_y;
+
+    /* 移动小猫光标, 使其尾部 (热点) 落在 (new_x, new_y) */
+    gui_cursor_set_pos(new_x, new_y);
+}
+
+/**
+  * @brief  鼠标右键 (双击) 动作入口
+  * @note   双击事件由 key.c 判定后经队列到达, 此处作为"打开上下文菜单"等
+  *         右键行为的钩子; 当前 UI 未定义右键菜单, 预留接口。
+  */
+static void App_MouseRightClick(int x, int y)
+{
+    (void)x;
+    (void)y;
+    /* TODO: 如需右键菜单, 可在此查找光标下对象并派发右键/上下文事件 */
+}
+
+/**
+  * @brief  消费输入事件, 驱动 LVGL 指针按压状态 (仅在 LVGL 任务上下文调用)
+  * @note   - 触摸按下/释放 -> s_touch_down
+  *         - PA2 按下/释放(由 App_KeyEventHandler 设置) -> s_pa2_btn_down
+  *         - 左键按下状态 = PA2 或 触摸任一按下; 按下期间摇杆移动即拖拽
+  *         - CLICK 为按键驱动确认的单击: LVGL 指针在释放时已生成点击,
+  *           这里不重复触发, 避免双击
+  *         - DOUBLE_CLICK -> 鼠标右键动作
+  */
+void App_ProcessInputEvents(void)
+{
+    InEv_t evt;
+
+    /* 触摸事件 (App_MouseUpdate 轮询入队) */
+    while (in_evq_pop(&evt))
+    {
+        if (evt.type == IN_EV_PRESS) {
+            s_touch_down = 1;
+        }
+        else {
+            s_touch_down = 0;
+        }
+    }
+
+    /* 单击确认: 按下->释放 已在 LVGL 指针上生成一次点击, 此处不重复触发 */
+    if (s_click_pending) {
+        s_click_pending = 0;
+    }
+
+    /* 双击 -> 右键 */
+    if (s_double_click_pending) {
+        s_double_click_pending = 0;
+        App_MouseRightClick(g_mouse_x, g_mouse_y);
+    }
+
+    /* 左键按下 = PA2(按键驱动) 或 触摸 任一按下 */
+    g_mouse_pressed = (uint8_t)((s_pa2_btn_down || s_touch_down) ? 1U : 0U);
 }
 
 /**
@@ -408,23 +595,27 @@ static void App_KeyEventHandler(KeyEventMsg_t *msg)
 
     switch (msg->eventType) {
         case KEY_EVENT_PRESS_DOWN:      // 0: 按下
-            // TODO: 按下反馈（如点击音效/界面高亮）
+            if (msg->keyId == KEY_ID_0) {
+                s_pa2_btn_down = 1;     /* 左键按下: 立即生效, 摇杆移动即拖拽 */
+            }
             break;
 
         case KEY_EVENT_CLICK:           // 1: 单击
             if (msg->keyId == KEY_ID_0) {
-                // TODO: 摇杆Z轴单击功能
+                s_click_pending = 1;    /* 单击确认: LVGL 任务消费 */
             }
             break;
 
         case KEY_EVENT_DOUBLE_CLICK:    // 2: 双击
             if (msg->keyId == KEY_ID_0) {
-                // TODO: 摇杆Z轴双击功能（如返回桌面）
+                s_double_click_pending = 1;  /* 双击 -> 右键, LVGL 任务消费 */
             }
             break;
 
         case KEY_EVENT_RELEASE:         // 3: 释放
-            // TODO: 释放反馈
+            if (msg->keyId == KEY_ID_0) {
+                s_pa2_btn_down = 0;     /* 左键释放: 结束拖拽 */
+            }
             break;
 
         default:

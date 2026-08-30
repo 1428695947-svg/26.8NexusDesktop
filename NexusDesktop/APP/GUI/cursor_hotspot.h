@@ -1,0 +1,2 @@
+#define CURSOR_HOTSPOT_X 0
+#define CURSOR_HOTSPOT_Y 20
