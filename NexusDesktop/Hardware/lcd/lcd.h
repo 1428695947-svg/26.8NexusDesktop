@@ -45,6 +45,7 @@
 #define LCD_RST_SET()   HAL_GPIO_WritePin(LCD_RST_PORT, LCD_RST_PIN, GPIO_PIN_SET)
 #define LCD_RST_CLR()   HAL_GPIO_WritePin(LCD_RST_PORT, LCD_RST_PIN, GPIO_PIN_RESET)
 #define LCD_LED_SET()   HAL_GPIO_WritePin(LCD_LED_PORT, LCD_LED_PIN, GPIO_PIN_SET)
+#define LCD_LED_CLR()   HAL_GPIO_WritePin(LCD_LED_PORT, LCD_LED_PIN, GPIO_PIN_RESET)
 
 /* LCD 设备信息结构体 (原厂格式) */
 typedef struct
@@ -91,6 +92,8 @@ extern uint16_t BACK_COLOR;     /* 背景颜色, 默认白色 */
 void LCD_Init(void);
 void LCD_DisplayOn(void);
 void LCD_DisplayOff(void);
+void LCD_DisplaySleepIn(void);
+void LCD_DisplaySleepOut(void);
 void LCD_Clear(uint16_t Color);
 void LCD_SetCursor(uint16_t Xpos, uint16_t Ypos);
 void LCD_DrawPoint(uint16_t x, uint16_t y);

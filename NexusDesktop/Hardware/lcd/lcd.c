@@ -357,3 +357,35 @@ void LCD_DisplayOff(void)
 {
     LCD_WR_REG(0x28);
 }
+
+/**
+  * @brief  熄屏 (Display Off + Sleep In + 关闭背光)
+  * @note   执行序列:
+  *         1. 发送 0x28 (Display Off), 关闭显示输出
+  *         2. 发送 0x10 (Sleep In), 驱动芯片进入低功耗休眠
+  *         3. 背光引脚 (PB15) 输出低电平, 关闭背光
+  *         与 LCD_DisplaySleepOut() 配套使用; 熄屏后整机功耗最低。
+  */
+void LCD_DisplaySleepIn(void)
+{
+    LCD_WR_REG(0x28);   /* Display Off */
+    LCD_WR_REG(0x10);   /* Sleep In */
+    LCD_LED_CLR();      /* 关闭背光 */
+}
+
+/**
+  * @brief  亮屏 (开启背光 + Sleep Out + Display On)
+  * @note   执行序列:
+  *         1. 背光引脚 (PB15) 输出高电平, 点亮背光
+  *         2. 发送 0x11 (Sleep Out), 唤醒驱动芯片
+  *         3. 延时 120ms, 等待芯片唤醒稳定 (Sleep Out 后必须等待)
+  *         4. 发送 0x29 (Display On), 重新开启显示输出
+  *         与 LCD_DisplaySleepIn() 配套使用; 唤醒延时不足可能导致花屏。
+  */
+void LCD_DisplaySleepOut(void)
+{
+    LCD_LED_SET();      /* 点亮背光 */
+    LCD_WR_REG(0x11);   /* Sleep Out */
+    delay_ms(120);      /* 等待芯片唤醒稳定 */
+    LCD_WR_REG(0x29);   /* Display On */
+}
