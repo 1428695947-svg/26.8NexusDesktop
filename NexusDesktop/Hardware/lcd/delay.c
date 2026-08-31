@@ -39,9 +39,12 @@ void delay_us(uint32_t nus)
 }
 
 /**
-  * @brief  毫秒级延时, 复用 HAL 时间基准 (TIM4 -> HAL_GetTick)
+  * @brief  毫秒级延时
+  * @note   与 delay_us 一样使用 DWT 周期计数器忙等, 不依赖 HAL 时间基准
+  *         (TIM4 -> uwTick -> HAL_Delay)。避免 HAL 时基异常时开机卡死
+  *         (如 LCD_Init 的 delay_ms(120) 永远等待)。
   */
 void delay_ms(uint16_t nms)
 {
-    HAL_Delay(nms);
+    delay_us((uint32_t)nms * 1000U);
 }
