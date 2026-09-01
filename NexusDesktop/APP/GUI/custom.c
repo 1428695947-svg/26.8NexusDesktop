@@ -121,16 +121,36 @@ static const char * cursor_name(int style)
          : "鼠标:手";
 }
 
+/* 同步登录/桌面两个界面的鼠标切换按钮: 未连接显示"鼠标未连接"并禁用, 连接后显示当前图案 */
+static void gui_update_switch_buttons(uint8_t connected)
+{
+    lv_obj_t * btns[2] = { guider_ui.login_btn_switch, guider_ui.desktop_btn_switch };
+    lv_obj_t * lbls[2] = { guider_ui.login_btn_switch_label, guider_ui.desktop_btn_switch_label };
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        if (btns[i] != NULL) {
+            if (connected) {
+                lv_obj_clear_state(btns[i], LV_STATE_DISABLED);
+            }
+            else {
+                lv_obj_add_state(btns[i], LV_STATE_DISABLED);
+            }
+        }
+        if (lbls[i] != NULL) {
+            lv_label_set_text(lbls[i], connected ? cursor_name(g_cursor_style) : "鼠标未连接");
+        }
+    }
+}
+
 static void mouse_switch_event_cb(lv_event_t * e)
 {
-    lv_obj_t * lbl = (lv_obj_t *)lv_event_get_user_data(e);
+    (void)e;
     if (!App_IsMouseConnected()) {
         return;             /* 鼠标未连接时不允许切换图案 */
     }
     gui_cursor_cycle();
-    if (lbl != NULL) {
-        lv_label_set_text(lbl, cursor_name(g_cursor_style));
-    }
+    gui_update_switch_buttons(1);
 }
 
 static void register_desktop_events(lv_ui * ui)
@@ -147,6 +167,10 @@ static void register_desktop_events(lv_ui * ui)
     if (ui->desktop_btn_shutdown != NULL) {
         lv_obj_add_event_cb(ui->desktop_btn_shutdown, shutdown_btn_event_cb, LV_EVENT_CLICKED, ui);
     }
+    if (ui->desktop_btn_switch != NULL) {
+        lv_obj_add_event_cb(ui->desktop_btn_switch, mouse_switch_event_cb, LV_EVENT_CLICKED,
+                            ui->desktop_btn_switch_label);
+    }
 }
 
 static void enter_desktop(lv_ui * ui)
@@ -155,6 +179,7 @@ static void enter_desktop(lv_ui * ui)
         setup_scr_desktop(ui);
     }
     register_desktop_events(ui);
+    gui_update_switch_buttons(App_IsMouseConnected());   /* 同步桌面按钮的连接/图案状态 */
     lv_scr_load(ui->desktop);
 }
 
@@ -285,25 +310,7 @@ void gui_lock_screen(void)
  */
 void gui_update_mouse_conn(uint8_t connected)
 {
-    lv_obj_t * btn = guider_ui.login_btn_switch;
-    lv_obj_t * lbl = guider_ui.login_btn_switch_label;
-
-    if (connected) {
-        if (btn != NULL) {
-            lv_obj_clear_state(btn, LV_STATE_DISABLED);
-        }
-        if (lbl != NULL) {
-            lv_label_set_text(lbl, cursor_name(g_cursor_style));
-        }
-    }
-    else {
-        if (btn != NULL) {
-            lv_obj_add_state(btn, LV_STATE_DISABLED);
-        }
-        if (lbl != NULL) {
-            lv_label_set_text(lbl, "鼠标未连接");
-        }
-    }
+    gui_update_switch_buttons(connected);
 }
 
 void custom_init(lv_ui *ui)

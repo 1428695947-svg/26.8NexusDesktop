@@ -147,6 +147,33 @@ void setup_scr_desktop(lv_ui *ui)
     lv_obj_set_style_text_font(ui->desktop_btn_menu, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_PRESSED);
     lv_obj_set_style_text_opa(ui->desktop_btn_menu, 255, LV_PART_MAIN|LV_STATE_PRESSED);
 
+    //Write codes desktop_btn_switch (鼠标连接/图案切换, 与登录界面同位置)
+    ui->desktop_btn_switch = lv_btn_create(ui->desktop);
+    ui->desktop_btn_switch_label = lv_label_create(ui->desktop_btn_switch);
+    lv_label_set_text(ui->desktop_btn_switch_label, "鼠标:猫");
+    lv_label_set_long_mode(ui->desktop_btn_switch_label, LV_LABEL_LONG_WRAP);
+    lv_obj_align(ui->desktop_btn_switch_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_pad_all(ui->desktop_btn_switch, 0, LV_STATE_DEFAULT);
+    lv_obj_set_width(ui->desktop_btn_switch_label, LV_PCT(100));
+    lv_obj_set_pos(ui->desktop_btn_switch, 10, 15);
+    lv_obj_set_size(ui->desktop_btn_switch, 120, 34);
+    lv_obj_set_style_bg_opa(ui->desktop_btn_switch, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_switch, lv_color_hex(0x2195f6), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->desktop_btn_switch, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui->desktop_btn_switch, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_switch, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(ui->desktop_btn_switch, 4, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(ui->desktop_btn_switch, lv_color_hex(0x2195f6), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(ui->desktop_btn_switch, 40, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(ui->desktop_btn_switch, 2, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_x(ui->desktop_btn_switch, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_y(ui->desktop_btn_switch, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_switch, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_switch, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui->desktop_btn_switch, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->desktop_btn_switch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_switch, lv_color_hex(0x1a7cd6), LV_PART_MAIN|LV_STATE_PRESSED);
+
     //The custom code of desktop.
 
 

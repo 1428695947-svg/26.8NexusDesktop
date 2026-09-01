@@ -36,6 +36,8 @@ typedef struct
 	lv_obj_t *desktop_btn_lock_label;
 	lv_obj_t *desktop_btn_menu;
 	lv_obj_t *desktop_btn_menu_label;
+	lv_obj_t *desktop_btn_switch;
+	lv_obj_t *desktop_btn_switch_label;
 	lv_obj_t *g_kb_top_layer;
 }lv_ui;
 
