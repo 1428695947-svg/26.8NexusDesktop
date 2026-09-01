@@ -25,6 +25,7 @@
 #include "tom_hotspot.h"
 #include "hand_hotspot.h"
 #include "flash_store.h"
+#include "app.h"
 #include <string.h>
 
 /**********************
@@ -109,18 +110,26 @@ static void lock_btn_event_cb(lv_event_t * e)
 
 static void shutdown_btn_event_cb(lv_event_t * e)
 {
-    lock_screen((lv_ui *)lv_event_get_user_data(e));
+    (void)e;
+    App_EnterPowerOff();    /* 关机 -> 熄屏, 摇杆移动或按键按下唤醒 */
+}
+
+static const char * cursor_name(int style)
+{
+    return (style == 0) ? "鼠标:猫"
+         : (style == 1) ? "鼠标:汤姆"
+         : "鼠标:手";
 }
 
 static void mouse_switch_event_cb(lv_event_t * e)
 {
     lv_obj_t * lbl = (lv_obj_t *)lv_event_get_user_data(e);
+    if (!App_IsMouseConnected()) {
+        return;             /* 鼠标未连接时不允许切换图案 */
+    }
     gui_cursor_cycle();
     if (lbl != NULL) {
-        const char * txt = (g_cursor_style == 0) ? "鼠标:猫"
-                         : (g_cursor_style == 1) ? "鼠标:汤姆"
-                         : "鼠标:手";
-        lv_label_set_text(lbl, txt);
+        lv_label_set_text(lbl, cursor_name(g_cursor_style));
     }
 }
 
@@ -259,6 +268,41 @@ void gui_cursor_hide(void)
     }
     if (g_hand_img != NULL) {
         lv_obj_add_flag(g_hand_img, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/**
+ * 返回登录界面并清空密码 (唤醒/锁定后需重新输入密码)。
+ */
+void gui_lock_screen(void)
+{
+    lock_screen(&guider_ui);
+}
+
+/**
+ * 根据摇杆(鼠标)连接状态更新左上角切换按钮。
+ * 未连接: 显示"鼠标未连接"并禁用按钮; 已连接: 显示当前图案并启用。
+ */
+void gui_update_mouse_conn(uint8_t connected)
+{
+    lv_obj_t * btn = guider_ui.login_btn_switch;
+    lv_obj_t * lbl = guider_ui.login_btn_switch_label;
+
+    if (connected) {
+        if (btn != NULL) {
+            lv_obj_clear_state(btn, LV_STATE_DISABLED);
+        }
+        if (lbl != NULL) {
+            lv_label_set_text(lbl, cursor_name(g_cursor_style));
+        }
+    }
+    else {
+        if (btn != NULL) {
+            lv_obj_add_state(btn, LV_STATE_DISABLED);
+        }
+        if (lbl != NULL) {
+            lv_label_set_text(lbl, "鼠标未连接");
+        }
     }
 }
 

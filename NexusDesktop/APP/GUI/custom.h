@@ -22,6 +22,8 @@ void gui_cursor_init(void);
 void gui_cursor_set_pos(int x, int y);
 void gui_cursor_cycle(void);
 void gui_cursor_hide(void);
+void gui_lock_screen(void);              /* 返回登录界面并清空密码 */
+void gui_update_mouse_conn(uint8_t connected); /* 更新鼠标连接状态显示(未连接/当前图案) */
 
 #ifdef __cplusplus
 }

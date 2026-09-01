@@ -3,7 +3,7 @@
   * @file    joystick.c
   * @brief   PS2双轴摇杆模块驱动（STM32F407VET6 + Keil MDK + HAL库）
   * @author  Embedded Expert
-  * @version V1.2
+  * @version V1.3
   * @date    2026-08-22
   ******************************************************************************
   * @attention
@@ -13,9 +13,10 @@
   *    因此本模块只做摇杆物理中心的软件校准
   * 4. 模块建议 3.3V 供电：5V 供电会超出 ADC 量程（读数饱和 4095）并超过引脚额定值
   *
-  * 【公有接口】（仅 2 个，供应用层调用）
+  * 【公有接口】（仅 3 个，供应用层调用）
   *   void JOY_Init(Joystick_HandleTypeDef *hjoy)    初始化+中心校准（上电调用一次）
   *   void JOY_Update(Joystick_HandleTypeDef *hjoy)  一帧完整处理（周期任务调用）
+  *   uint8_t JOY_IsConnected(Joystick_HandleTypeDef *hjoy)  摇杆连接检测（1=已连接，0=未连接）
   * 其余函数均为 static 私有实现，外部不可见
   *
   * 【调用流程】
@@ -38,6 +39,9 @@
   *    正向归一化最大仅约 0.32，控制不对称，不推荐
   * 4. JOY_ReadADC 每次 Stop->ConfigChannel->Start->Poll->Stop，为阻塞式轮询，
   *    不要在中断上下文中调用 JOY_Update
+ * 5. 连接检测不依赖“断开时读数接近0”，而是综合窗口内波动、校准中心合理性和
+ *    静止读数贴近中心来判断；参数见 joystick.h 的 JOY_CONNECT_*。
+ *    持续按住对角极限位置可能被判为未连接（与旧版同样的取舍）
   ******************************************************************************
   */
 
@@ -49,6 +53,17 @@ static uint16_t JOY_ReadADC(uint32_t channel);
 static void JOY_GetNormalized(Joystick_HandleTypeDef *hjoy);
 static void JOY_ApplyCurve(Joystick_HandleTypeDef *hjoy);
 static void JOY_ReadRaw(Joystick_HandleTypeDef *hjoy);
+static void JOY_UpdateConnWindow(Joystick_HandleTypeDef *hjoy);
+
+/* ========================= 连接检测滑动窗口 =========================
+ * 记录最近 JOY_CONNECT_WINDOW 次原始值的最小/最大, 用于判断摇杆是否有
+ * 实际信号(摇杆在动)。窗口内波动超过 JOY_CONNECT_RANGE 视为有信号。 */
+static uint16_t s_conn_min_x = 0;
+static uint16_t s_conn_max_x = 0;
+static uint16_t s_conn_min_y = 0;
+static uint16_t s_conn_max_y = 0;
+static uint8_t  s_conn_window_cnt = 0;
+static uint8_t  s_conn_bad_cnt = 0;    /* 连续未连接判定计数 */
 
 /* ========================= 公有函数实现 ========================= */
 
@@ -96,6 +111,9 @@ void JOY_Update(Joystick_HandleTypeDef *hjoy)
     /* 读取X/Y轴原始值 */
     JOY_ReadRaw(hjoy);
 
+    /* 更新连接检测滑动窗口 */
+    JOY_UpdateConnWindow(hjoy);
+
     /* 原始值 -> 归一化值 */
     JOY_GetNormalized(hjoy);
 
@@ -103,7 +121,90 @@ void JOY_Update(Joystick_HandleTypeDef *hjoy)
     JOY_ApplyCurve(hjoy);
 }
 
+/**
+  * @brief  检测摇杆是否连接
+  * @param  hjoy: 摇杆句柄指针
+  * @retval 1=已连接，0=未连接
+  * @note   判定条件（不依赖"断开时读数接近0"）：
+  *         1. 最近窗口内原始值有明显波动（摇杆在动）-> 已连接
+  *         2. 校准中心合理（说明校准时摇杆在位）且静止读数贴近中心 -> 已连接
+  *         3. 连续 JOY_CONNECT_CONFIRM_N 次未通过上述判定才上报断开，避免抖动误判
+  * @note   在 JOY_Update 之后调用即可（滑动窗口在 JOY_Update 内维护）
+  */
+uint8_t JOY_IsConnected(Joystick_HandleTypeDef *hjoy)
+{
+    uint16_t dx;
+    uint16_t dy;
+    uint8_t  center_ok;
+    uint8_t  mid_ok;
+    uint8_t  moved;
+
+    if (hjoy == NULL) {
+        return 0;
+    }
+
+    /* 计算判定信号 */
+    center_ok = ((hjoy->center_x >= JOY_CONNECT_CENTER_MIN) && (hjoy->center_x <= JOY_CONNECT_CENTER_MAX) &&
+                 (hjoy->center_y >= JOY_CONNECT_CENTER_MIN) && (hjoy->center_y <= JOY_CONNECT_CENTER_MAX)) ? 1U : 0U;
+    mid_ok = (((hjoy->x_raw >= JOY_CONNECT_MID_MIN) && (hjoy->x_raw <= JOY_CONNECT_MID_MAX)) ||
+              ((hjoy->y_raw >= JOY_CONNECT_MID_MIN) && (hjoy->y_raw <= JOY_CONNECT_MID_MAX))) ? 1U : 0U;
+    moved = (((uint16_t)(s_conn_max_x - s_conn_min_x) > JOY_CONNECT_RANGE) ||
+             ((uint16_t)(s_conn_max_y - s_conn_min_y) > JOY_CONNECT_RANGE)) ? 1U : 0U;
+
+    /* 任一强信号即认为连接:
+     * - mid_ok   : 至少一轴处于合理中段读数(摇杆在位, 与校准中心无关, 插上即有效)
+     * - moved    : 窗口内波动大(真实摇动; 断开噪声通常远小于该阈值)
+     * - center   : 校准中心合理且静止读数贴近中心(校准时在位)
+     */
+    if (mid_ok || moved) {
+        s_conn_bad_cnt = 0;
+        return 1;
+    }
+    if (center_ok) {
+        dx = (hjoy->x_raw > hjoy->center_x) ? (uint16_t)(hjoy->x_raw - hjoy->center_x)
+                                            : (uint16_t)(hjoy->center_x - hjoy->x_raw);
+        dy = (hjoy->y_raw > hjoy->center_y) ? (uint16_t)(hjoy->y_raw - hjoy->center_y)
+                                            : (uint16_t)(hjoy->center_y - hjoy->y_raw);
+        if ((dx <= JOY_CONNECT_REST_BAND) || (dy <= JOY_CONNECT_REST_BAND)) {
+            s_conn_bad_cnt = 0;
+            return 1;
+        }
+    }
+
+    /* 4) 连续多次未通过才判定断开, 降低瞬时误判 */
+    if (++s_conn_bad_cnt >= JOY_CONNECT_CONFIRM_N) {
+        return 0;
+    }
+    return 1;
+}
+
 /* ========================= 私有函数实现 ========================= */
+
+/**
+  * @brief  更新连接检测滑动窗口 (原始值 min/max)
+  * @param  hjoy: 摇杆句柄指针
+  * @retval None
+  * @note   每 JOY_CONNECT_WINDOW 个样本重置一次窗口
+  */
+static void JOY_UpdateConnWindow(Joystick_HandleTypeDef *hjoy)
+{
+    if (s_conn_window_cnt == 0U) {
+        s_conn_min_x = hjoy->x_raw;
+        s_conn_max_x = hjoy->x_raw;
+        s_conn_min_y = hjoy->y_raw;
+        s_conn_max_y = hjoy->y_raw;
+    }
+    else {
+        if (hjoy->x_raw < s_conn_min_x) s_conn_min_x = hjoy->x_raw;
+        if (hjoy->x_raw > s_conn_max_x) s_conn_max_x = hjoy->x_raw;
+        if (hjoy->y_raw < s_conn_min_y) s_conn_min_y = hjoy->y_raw;
+        if (hjoy->y_raw > s_conn_max_y) s_conn_max_y = hjoy->y_raw;
+    }
+
+    if (++s_conn_window_cnt >= JOY_CONNECT_WINDOW) {
+        s_conn_window_cnt = 0;
+    }
+}
 
 /**
   * @brief  摇杆中心校准

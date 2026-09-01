@@ -38,7 +38,10 @@ typedef struct {
 void App_Init(void);
 void App_GuiInit(void);            /* GUI Guider 界面初始化 (登录/桌面 + 小猫光标 + 密码 Flash) */
 void App_MouseUpdate(void);        /* 摇杆/触摸/PA2 -> 鼠标坐标与按下状态 */
+void App_SetMouseSpeed(float speed);/* 设置摇杆鼠标移动速度（px/frame，浮点数） */
 void App_ProcessInputEvents(void); /* 消费输入事件队列, 驱动 LVGL 指针点击/长按重复 */
+void App_EnterPowerOff(void);      /* 进入熄屏状态 (关机), 摇杆移动或按键按下唤醒 */
+uint8_t App_IsMouseConnected(void);/* 查询摇杆(鼠标)是否已连接: 1=已连接 */
 void App_Tick1ms(void);
 void App_KeyEventTask(void);       /* 按键事件消费任务 (FreeRTOS队列接收并处理) */
 void App_JoystickTask(void);

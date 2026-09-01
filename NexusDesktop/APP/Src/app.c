@@ -64,11 +64,12 @@ volatile int     g_mouse_x = 160;
 volatile int     g_mouse_y = 240;
 volatile uint8_t g_mouse_pressed = 0;
 
-/* 摇杆鼠标速度映射:
+/* 摇杆鼠标速度: 每帧像素位移系数 (px/frame)
  * 摇杆驱动已把归一化值做平方 (JOY_ApplyCurve), hjoy.x_norm/y_norm 即二次曲线
- * (-1.0~1.0)。乘以 MOUSE_STEP 得到每帧像素位移, 即"摇杆偏移量 -> 鼠标位移
- * (-50 ~ +50 pixels/frame)"。满推约 MOUSE_STEP*200 px/s。 */
-#define MOUSE_STEP 50.0f
+ * (-1.0~1.0)。App_MouseUpdate 中每帧位移 = x_norm * s_mouse_speed;
+ * LVGL 任务 200Hz, 满推速度约 s_mouse_speed*200 px/s。
+ * 默认 3.0f 满推约 600 px/s, 可用 App_SetMouseSpeed() 运行时调整。 */
+static float s_mouse_speed = 3.0f;
 
 /* ========================= 输入事件队列 =========================
  * 触摸输入先转为事件, 由 LVGL 主循环(App_ProcessInputEvents)统一消费;
@@ -130,6 +131,12 @@ static volatile uint8_t s_click_pending     = 0;   /* 单击确认事件待处�
 static volatile uint8_t s_double_click_pending = 0;/* 双击(右键)事件待处理 */
 static uint8_t  s_touch_down = 0;                 /* 触摸是否按下 */
 static uint8_t  s_tp_prev    = 0;                 /* 触摸上一周期是否按下 */
+
+/* 熄屏(关机)状态与摇杆(鼠标)连接状态 */
+static volatile uint8_t s_power_off       = 0;    /* 1=熄屏中 */
+static uint8_t          s_power_off_pa2_prev = 0; /* 进入熄屏时的 PA2 状态 */
+static volatile uint8_t s_mouse_connected = 1;    /* 摇杆任务周期检测更新: 1=已连接 */
+static uint8_t          s_conn_check_cnt  = 0;    /* 连接检测计数 */
 
 /* ========================= 公共函数实现 ========================= */
 
@@ -209,6 +216,11 @@ void App_JoystickTask(void)
 {
     for (;;) {
         JOY_Update(&hjoy);      /* 读取摇杆：原始值->归一化->曲线，结果在 hjoy.x_norm/y_norm */
+        /* 约每 500ms 检测一次摇杆(鼠标)连接状态 (ADC 访问集中在摇杆任务, 避免与 LVGL 任务抢) */
+        if (++s_conn_check_cnt >= 50U) {
+            s_conn_check_cnt = 0;
+            s_mouse_connected = JOY_IsConnected(&hjoy);
+        }
         osDelay(10);            /* 100Hz采样（configTICK_RATE_HZ=1000） */
     }
 }
@@ -303,6 +315,28 @@ void App_GuiInit(void)
 }
 
 /**
+  * @brief  进入熄屏状态 (关机)
+  * @note   关闭背光并隐藏鼠标光标; 摇杆移动或 PA2 按键按下时由
+  *         App_MouseUpdate 唤醒并回到登录界面。
+  */
+void App_EnterPowerOff(void)
+{
+    s_power_off = 1;
+    s_power_off_pa2_prev = (s_pa2_btn_down ? 1U : 0U);
+    LCD_LED_CLR();              /* 关闭背光 = 熄屏 */
+    gui_cursor_hide();
+}
+
+/**
+  * @brief  查询摇杆(鼠标)是否已连接
+  * @retval 1=已连接, 0=未连接
+  */
+uint8_t App_IsMouseConnected(void)
+{
+    return s_mouse_connected;
+}
+
+/**
   * @brief  鼠标输入更新 (由 LVGL 任务周期调用)
   * @note   - 触摸: 按下时把鼠标坐标吸附到触摸点, 并视为鼠标按下
   *         - 摇杆: 按 x_norm/y_norm 增量移动鼠标 (空闲与按下均移动, 按下即拖拽)
@@ -312,12 +346,43 @@ void App_MouseUpdate(void)
 {
     static float s_mouse_fx = 0.0f;   /* 低速段浮点累加器 (保留小数, 实现细腻移动) */
     static float s_mouse_fy = 0.0f;
+    static uint8_t s_last_conn = 0xFF;
     int     new_x = (int)g_mouse_x;
     int     new_y = (int)g_mouse_y;
     uint8_t touched = 0;
+    uint8_t pa2_now;
 
-    /* 触摸: 点击坐标即鼠标当前坐标 (位置更新由这里负责, 按下事件走队列) */
-    if (TP_IsEnabled() && TP_Scan(0))
+    /* ===== 熄屏(关机)状态: 摇杆移动 或 PA2 按键按下 -> 唤醒并回到登录界面 ===== */
+    if (s_power_off) {
+        pa2_now = (s_pa2_btn_down ? 1U : 0U);
+        uint8_t joy_moved = (hjoy.x_norm != 0.0f) || (hjoy.y_norm != 0.0f);
+        if (joy_moved || (pa2_now && !s_power_off_pa2_prev)) {
+            s_power_off = 0;
+            LCD_LED_SET();                          /* 点亮背光 */
+            gui_lock_screen();                      /* 返回登录界面并清空密码 */
+            if (s_mouse_connected) {
+                gui_cursor_set_pos(g_mouse_x, g_mouse_y);  /* 重新显示光标 */
+            }
+        }
+        s_power_off_pa2_prev = pa2_now;
+        return;                                     /* 熄屏期间不处理移动/触摸 */
+    }
+
+    /* ===== 摇杆(鼠标)连接状态变化 -> 更新切换按钮显示 ===== */
+    if (s_mouse_connected != s_last_conn) {
+        s_last_conn = s_mouse_connected;
+        gui_update_mouse_conn(s_mouse_connected);
+    }
+    if (!s_mouse_connected) {
+        gui_cursor_hide();                          /* 未连接不显示鼠标图案 */
+        return;
+    }
+
+    /* 触摸: 点击坐标即鼠标当前坐标 (位置更新由这里负责, 按下事件走队列)。
+     * 仅当坐标落在屏幕范围内才作为有效触摸, 避免触摸误报/噪声产生越界坐标
+     * 把光标吸附到屏幕边缘并锁死摇杆控制。 */
+    if (TP_IsEnabled() && TP_Scan(0) &&
+        (tp_dev.x < 320U) && (tp_dev.y < 480U))
     {
         touched = 1;
         s_mouse_fx = 0.0f;      /* 触摸接管时清空摇杆累加器, 避免电量残留跳变 */
@@ -342,8 +407,8 @@ void App_MouseUpdate(void)
      * 若按键处于按下状态, 移动即进入拖拽模式 (拖拽 > 点击)。 */
     if (!touched)
     {
-        s_mouse_fx += hjoy.x_norm * MOUSE_STEP;
-        s_mouse_fy += hjoy.y_norm * MOUSE_STEP;
+        s_mouse_fx += hjoy.x_norm * s_mouse_speed;
+        s_mouse_fy += hjoy.y_norm * s_mouse_speed;
         int dx = (int)s_mouse_fx;
         int dy = (int)s_mouse_fy;
         s_mouse_fx -= (float)dx;
@@ -363,6 +428,21 @@ void App_MouseUpdate(void)
 
     /* 移动小猫光标, 使其尾部 (热点) 落在 (new_x, new_y) */
     gui_cursor_set_pos(new_x, new_y);
+}
+
+/**
+  * @brief  设置摇杆鼠标移动速度
+  * @param  speed: 每帧像素位移系数（px/frame，浮点数）
+  * @retval None
+  * @note   满推速度约为 speed*200 px/s（LVGL 任务 200Hz）；负值按 0 处理
+  * @note   仅影响摇杆控制鼠标的移动，不影响触摸输入
+  */
+void App_SetMouseSpeed(float speed)
+{
+    if (speed < 0.0f) {
+        speed = 0.0f;
+    }
+    s_mouse_speed = speed;
 }
 
 /**
@@ -412,8 +492,13 @@ void App_ProcessInputEvents(void)
         App_MouseRightClick(g_mouse_x, g_mouse_y);
     }
 
-    /* 左键按下 = PA2(按键驱动) 或 触摸 任一按下 */
-    g_mouse_pressed = (uint8_t)((s_pa2_btn_down || s_touch_down) ? 1U : 0U);
+    /* 左键按下 = PA2(按键驱动) 或 触摸 任一按下; 鼠标未连接时强制释放 */
+    if (s_mouse_connected) {
+        g_mouse_pressed = (uint8_t)((s_pa2_btn_down || s_touch_down) ? 1U : 0U);
+    }
+    else {
+        g_mouse_pressed = 0;
+    }
 }
 
 /**
