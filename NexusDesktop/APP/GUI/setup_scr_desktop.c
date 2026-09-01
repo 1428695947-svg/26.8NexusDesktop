@@ -174,6 +174,33 @@ void setup_scr_desktop(lv_ui *ui)
     lv_obj_set_style_text_align(ui->desktop_btn_switch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(ui->desktop_btn_switch, lv_color_hex(0x1a7cd6), LV_PART_MAIN|LV_STATE_PRESSED);
 
+    //Write codes desktop_btn_settings (系统设置入口, 右上角)
+    ui->desktop_btn_settings = lv_btn_create(ui->desktop);
+    ui->desktop_btn_settings_label = lv_label_create(ui->desktop_btn_settings);
+    lv_label_set_text(ui->desktop_btn_settings_label, "设置");
+    lv_label_set_long_mode(ui->desktop_btn_settings_label, LV_LABEL_LONG_WRAP);
+    lv_obj_align(ui->desktop_btn_settings_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_pad_all(ui->desktop_btn_settings, 0, LV_STATE_DEFAULT);
+    lv_obj_set_width(ui->desktop_btn_settings_label, LV_PCT(100));
+    lv_obj_set_pos(ui->desktop_btn_settings, 202, 15);
+    lv_obj_set_size(ui->desktop_btn_settings, 108, 34);
+    lv_obj_set_style_bg_opa(ui->desktop_btn_settings, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_settings, lv_color_hex(0x2195f6), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->desktop_btn_settings, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui->desktop_btn_settings, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_settings, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(ui->desktop_btn_settings, 4, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(ui->desktop_btn_settings, lv_color_hex(0x2195f6), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(ui->desktop_btn_settings, 40, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(ui->desktop_btn_settings, 2, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_x(ui->desktop_btn_settings, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_y(ui->desktop_btn_settings, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_settings, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_settings, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui->desktop_btn_settings, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->desktop_btn_settings, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_settings, lv_color_hex(0x1a7cd6), LV_PART_MAIN|LV_STATE_PRESSED);
+
     //The custom code of desktop.
 
 

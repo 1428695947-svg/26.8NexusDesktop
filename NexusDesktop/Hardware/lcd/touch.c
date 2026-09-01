@@ -80,6 +80,10 @@ _m_tp_dev tp_dev=
 uint8_t CMD_RDX=0XD0;
 uint8_t CMD_RDY=0X90;
 
+/* XPT2046 原始 AD 按压判定区间 (未按压时读数通常为 0 或 4095 附近) */
+#define TP_AD_PRESS_MIN  60U
+#define TP_AD_PRESS_MAX  4035U
+
 /* ==================== 移植新增: 调试观察变量 (Keil Debug Watch) ====================
  * dbg_tp_x / dbg_tp_y      : 触摸扫描后的坐标 (TP_Scan 结果, 可能含校准变换)
  * dbg_tp_x_raw/dbg_tp_y_raw: XPT2046 原始 AD 值 (TP_Read_XY2 直接读出)
@@ -295,39 +299,57 @@ void TP_Draw_Big_Point(uint16_t x,uint16_t y,uint16_t color)
 ******************************************************************************/  					  
 uint8_t TP_Scan(uint8_t tp)
 {
+    uint16_t probe;
+    uint8_t pressed;
+
     /* 触摸未使能时不扫描 (LVGL indev 等直接调用者也返回"未按下") */
     if (s_tp_enabled == 0)
     {
         return 0;
     }
-	if(PEN_READ()==GPIO_PIN_RESET)//有按键按下
-	{
-		if(tp)TP_Read_XY2(&tp_dev.x,&tp_dev.y);//读取物理坐标
-		else if(TP_Read_XY2(&tp_dev.x,&tp_dev.y))//读取屏幕坐标
-		{
-	 		tp_dev.x=tp_dev.xfac*tp_dev.x+tp_dev.xoff;//将结果转换为屏幕坐标
-			tp_dev.y=tp_dev.yfac*tp_dev.y+tp_dev.yoff;  
-	 	} 
-		if((tp_dev.sta&TP_PRES_DOWN)==0)//之前没有被按下
-		{		 
-			tp_dev.sta=TP_PRES_DOWN|TP_CATH_PRES;//按键按下  
-			tp_dev.x0=tp_dev.x;//记录第一次按下时的坐标
-			tp_dev.y0=tp_dev.y;  	   			 
-		}			   
-	}else
-	{
-		if(tp_dev.sta&TP_PRES_DOWN)//之前是被按下的
-		{
-			tp_dev.sta&=~(1<<7);//标记按键松开	
-		}else//之前就没有被按下
-		{
-			tp_dev.x0=0;
-			tp_dev.y0=0;
-			tp_dev.x=0xffff;
-			tp_dev.y=0xffff;
-		}	    
-	}
-	return tp_dev.sta&TP_PRES_DOWN;//返回当前的触屏状态
+
+    /* 按下判定: PEN 电平优先; PEN 未按下时用 XPT2046 原始 AD 探测
+       (T_IRQ/PEN 未接或损坏时仍能识别按压) */
+    if (PEN_READ() == GPIO_PIN_RESET)
+    {
+        pressed = 1;
+    }
+    else
+    {
+        probe = TP_Read_AD(CMD_RDX);
+        pressed = ((probe >= TP_AD_PRESS_MIN) && (probe <= TP_AD_PRESS_MAX)) ? 1U : 0U;
+    }
+
+    if (pressed)                                   // 有按键按下
+    {
+        if (tp) TP_Read_XY2(&tp_dev.x, &tp_dev.y); // 读取物理坐标
+        else if (TP_Read_XY2(&tp_dev.x, &tp_dev.y))// 读取屏幕坐标
+        {
+            tp_dev.x = tp_dev.xfac * tp_dev.x + tp_dev.xoff;
+            tp_dev.y = tp_dev.yfac * tp_dev.y + tp_dev.yoff;
+        }
+        if ((tp_dev.sta & TP_PRES_DOWN) == 0)      // 之前没有被按下
+        {
+            tp_dev.sta = TP_PRES_DOWN | TP_CATH_PRES;
+            tp_dev.x0 = tp_dev.x;
+            tp_dev.y0 = tp_dev.y;
+        }
+    }
+    else
+    {
+        if (tp_dev.sta & TP_PRES_DOWN)             // 之前是被按下的
+        {
+            tp_dev.sta &= (uint8_t)~(1U << 7);     // 标记按键松开
+        }
+        else                                       // 之前就没有被按下
+        {
+            tp_dev.x0 = 0;
+            tp_dev.y0 = 0;
+            tp_dev.x = 0xffff;
+            tp_dev.y = 0xffff;
+        }
+    }
+    return tp_dev.sta & TP_PRES_DOWN;              // 返回当前触屏状态
 }
 	  
 //////////////////////////////////////////////////////////////////////////	 
@@ -733,6 +755,26 @@ uint8_t TP_IsEnabled(void)
 #define CAL_MARGIN       30U     /* 边缘留白 (像素) */
 #define CAL_SAMPLE_CNT   5U      /* 每点采样次数 */
 #define CAL_MIN_VALID    3U      /* 每点最少有效采样数 */
+#define CAL_POINT_TIMEOUT_MS 10000U  /* 单点: 等待按下/松开上限, 超时放弃本次校准 */
+#define CAL_TOTAL_TIMEOUT_MS 60000U  /* 整体 9 点校准上限 */
+
+/* 校准中止标志 (某点超时/整体超时置位, 校准结束后清零) */
+static volatile uint8_t s_cal_abort = 0;
+
+/* 实时诊断行 (画在校准提示下方): P=PEN, X/Y=XPT2046 原始 AD */
+static void cal_show_diag(void)
+{
+    uint16_t dx, dy;
+    uint8_t pen = (PEN_READ() == GPIO_PIN_RESET) ? 1U : 0U;
+    TP_Read_XY(&dx, &dy);
+    POINT_COLOR = BLUE;
+    LCD_ShowString(10, 60, 16, "P:", 0);
+    LCD_ShowNum(26, 60, pen, 1, 16);
+    LCD_ShowString(36, 60, 16, "X:", 0);
+    LCD_ShowNum(52, 60, dx, 4, 16);
+    LCD_ShowString(88, 60, 16, "Y:", 0);
+    LCD_ShowNum(104, 60, dy, 4, 16);
+}
 
 /* 校准点: 屏幕坐标 + 对应原始 AD */
 typedef struct
@@ -779,28 +821,78 @@ static uint8_t cal_sample_point(uint16_t *rx_out, uint16_t *ry_out)
     uint16_t rx[CAL_SAMPLE_CNT];
     uint16_t ry[CAL_SAMPLE_CNT];
     uint8_t valid = 0;
-    uint8_t i;
+    uint32_t t0;
+    uint32_t diag_t = 0;
+    uint32_t sample_t0;
 
-    while (PEN_READ() != GPIO_PIN_RESET)    /* 等待按下 */
+    cal_show_diag();                        /* 每次进入校准点先显示当前状态 */
+
+    /* 1) 等待按下边沿: 与桌面触摸完全相同的 TP_Scan(1) 机制 */
+    t0 = HAL_GetTick();
+    for (;;)
     {
+        TP_Scan(1);
+        if ((tp_dev.sta & (TP_PRES_DOWN | TP_CATH_PRES)) == (TP_PRES_DOWN | TP_CATH_PRES))
+        {
+            break;
+        }
+        if ((HAL_GetTick() - diag_t) >= 150U)
+        {
+            diag_t = HAL_GetTick();
+            cal_show_diag();
+        }
+        if ((HAL_GetTick() - t0) > CAL_POINT_TIMEOUT_MS)
+        {
+            s_cal_abort = 1;            /* 长时间无人触摸 -> 放弃 */
+            return 0;
+        }
         delay_ms(5);
     }
+    tp_dev.sta &= (uint8_t)~TP_CATH_PRES;   /* 清除捕获标志 */
     delay_ms(40);                           /* 等待坐标稳定 */
 
-    for (i = 0; i < CAL_SAMPLE_CNT; i++)
+    /* 2) 按住期间持续采样原始坐标: 双读一致优先, 失败回退单读+范围过滤 */
+    sample_t0 = HAL_GetTick();
+    while ((valid < CAL_SAMPLE_CNT) && ((HAL_GetTick() - sample_t0) < 3000U))
     {
         uint16_t x, y;
+        TP_Scan(1);                     /* 刷新按下/松开状态 */
         if (TP_Read_XY2(&x, &y))
         {
             rx[valid] = x;
             ry[valid] = y;
             valid++;
         }
+        else
+        {
+            TP_Read_XY(&x, &y);
+            if ((x >= TP_AD_PRESS_MIN) && (x <= TP_AD_PRESS_MAX) &&
+                (y >= TP_AD_PRESS_MIN) && (y <= TP_AD_PRESS_MAX))
+            {
+                rx[valid] = x;
+                ry[valid] = y;
+                valid++;
+            }
+        }
+        if (valid >= CAL_SAMPLE_CNT) break;
+        if ((tp_dev.sta & TP_PRES_DOWN) == 0) break;   /* 已经松开 */
         delay_ms(8);
     }
 
-    while (PEN_READ() == GPIO_PIN_RESET)    /* 等待松开 */
+    /* 3) 等待松开 */
+    t0 = HAL_GetTick();
+    for (;;)
     {
+        TP_Scan(1);
+        if ((tp_dev.sta & TP_PRES_DOWN) == 0)
+        {
+            break;
+        }
+        if ((HAL_GetTick() - t0) > CAL_POINT_TIMEOUT_MS)
+        {
+            s_cal_abort = 1;            /* 按住不松 -> 放弃 */
+            return 0;
+        }
         delay_ms(5);
     }
 
@@ -833,6 +925,7 @@ void TP_MultiPointCalibrate(void)
     uint32_t sum_rxrx = 0, sum_rxsx = 0, sum_ryry = 0, sum_rysy = 0;
     float nf, den;
     uint16_t save_pc, save_bc;
+    uint32_t t_start;
 
     TP_Enable();        /* 确保触摸已初始化 (首次自动 TP_Init) */
 
@@ -859,6 +952,9 @@ void TP_MultiPointCalibrate(void)
     BACK_COLOR = WHITE;
     LCD_ShowString(10, 10, 16, "Calibrate: tap each cross", 0);
 
+    s_cal_abort = 0;
+    t_start = HAL_GetTick();
+
     for (i = 0; i < CAL_POINTS_NUM; i++)
     {
         uint16_t rx = 0, ry = 0;
@@ -868,16 +964,23 @@ void TP_MultiPointCalibrate(void)
         LCD_ShowNum(10, 30, (uint32_t)(i + 1U), 1, 16);
         LCD_ShowString(22, 30, 16, "/9", 0);
 
-        while (!ok)                                  /* 采样直到有效 */
+        while (!ok)                                  /* 采样直到有效 (带超时) */
         {
+            if (s_cal_abort || ((HAL_GetTick() - t_start) > CAL_TOTAL_TIMEOUT_MS))
+            {
+                s_cal_abort = 1;
+                break;
+            }
             ok = cal_sample_point(&rx, &ry);
             if (!ok)
             {
+                if (s_cal_abort) break;
                 cal_draw_cross(sx[i], sy[i], WHITE);
                 delay_ms(300);
                 cal_draw_cross(sx[i], sy[i], RED);
             }
         }
+        if (s_cal_abort) break;
 
         cal_draw_cross(sx[i], sy[i], WHITE);         /* 抹掉十字 */
         pts[n].sx = sx[i];
@@ -915,12 +1018,73 @@ void TP_MultiPointCalibrate(void)
     }
     tp_dev.touchtype = 0;
 
-    /* 写入 Flash (只保留最近一条), 更新序号 */
-    TP_Save_Adjdata();
-    g_cal_seq = CalStore_GetSeq();
+    if (!s_cal_abort)
+    {
+        /* 写入 Flash (只保留最近一条), 更新序号 */
+        TP_Save_Adjdata();
+        g_cal_seq = CalStore_GetSeq();
+        POINT_COLOR = BLACK;
+        LCD_ShowString(10, 10, 16, "Calibrate OK", 0);
+    }
+    else
+    {
+        POINT_COLOR = BLACK;
+        LCD_ShowString(10, 10, 16, "Calibrate SKIPPED", 0);
+    }
+    delay_ms(500);
+    s_cal_abort = 0;
 
     /* 恢复调用方原有的画笔/背景色; 不主动清屏改色, 屏幕内容由调用方恢复
        (App_TouchCalibrate 包装中强制 LVGL 重绘) */
     POINT_COLOR = save_pc;
     BACK_COLOR = save_bc;
+}
+
+/**
+  * @brief  由已采集的校准点 (屏幕坐标 + 对应原始 AD) 计算校准参数并保存
+  * @note   最小二乘线性拟合: sx = xfac*rx + xoff, sy = yfac*ry + yoff
+  *         供 LVGL 版校准界面 (App_TouchCalibrate) 采集完 9 点后调用。
+  */
+void TP_CalibrateFromPoints(const uint16_t *sx, const uint16_t *sy,
+                            const uint16_t *rx, const uint16_t *ry, uint8_t n)
+{
+    uint32_t sum_rx = 0, sum_ry = 0, sum_sx = 0, sum_sy = 0;
+    uint32_t sum_rxrx = 0, sum_rxsx = 0, sum_ryry = 0, sum_rysy = 0;
+    float nf, den;
+    uint8_t i;
+
+    if (sx == NULL || sy == NULL || rx == NULL || ry == NULL || n < 4U)
+    {
+        return;
+    }
+
+    for (i = 0; i < n; i++)
+    {
+        sum_rx   += rx[i];
+        sum_ry   += ry[i];
+        sum_sx   += sx[i];
+        sum_sy   += sy[i];
+        sum_rxrx += (uint32_t)rx[i] * rx[i];
+        sum_rxsx += (uint32_t)rx[i] * sx[i];
+        sum_ryry += (uint32_t)ry[i] * ry[i];
+        sum_rysy += (uint32_t)ry[i] * sy[i];
+    }
+    nf = (float)n;
+
+    den = nf * (float)sum_rxrx - (float)sum_rx * (float)sum_rx;
+    if (den != 0.0f)
+    {
+        tp_dev.xfac = (nf * (float)sum_rxsx - (float)sum_rx * (float)sum_sx) / den;
+        tp_dev.xoff = (int16_t)(((float)sum_sx - tp_dev.xfac * (float)sum_rx) / nf);
+    }
+    den = nf * (float)sum_ryry - (float)sum_ry * (float)sum_ry;
+    if (den != 0.0f)
+    {
+        tp_dev.yfac = (nf * (float)sum_rysy - (float)sum_ry * (float)sum_sy) / den;
+        tp_dev.yoff = (int16_t)(((float)sum_sy - tp_dev.yfac * (float)sum_ry) / nf);
+    }
+    tp_dev.touchtype = 0;
+
+    TP_Save_Adjdata();
+    g_cal_seq = CalStore_GetSeq();
 }

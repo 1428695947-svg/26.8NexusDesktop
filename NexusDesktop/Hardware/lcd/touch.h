@@ -94,5 +94,8 @@ void    TP_Enable(void);     /* 开启触摸: 首次调用自动执行 TP_Init()
 void    TP_Disable(void);    /* 关闭触摸: 停止扫描/画图 (引脚保持已初始化) */
 uint8_t TP_IsEnabled(void);  /* 查询触摸是否已开启: 1=开, 0=关 */
 void    TP_MultiPointCalibrate(void);  /* 9 点校准 (3x3 网格 + 最小二乘), 结果写 Flash */
+void    TP_CalibrateFromPoints(const uint16_t *sx, const uint16_t *sy,
+                               const uint16_t *rx, const uint16_t *ry, uint8_t n);
+                               /* 由采集点拟合校准参数并写 Flash (供 LVGL 校准界面调用) */
 
 #endif

@@ -24,6 +24,7 @@
 #include "cal_store.h"
 #include "delay.h"
 #include "flash_store.h"
+#include "user_store.h"
 
 #include "lvgl.h"
 #include "lv_port_disp.h"
@@ -70,6 +71,10 @@ volatile uint8_t g_mouse_pressed = 0;
  * LVGL 任务 200Hz, 满推速度约 s_mouse_speed*200 px/s。
  * 默认 3.0f 满推约 600 px/s, 可用 App_SetMouseSpeed() 运行时调整。 */
 static float s_mouse_speed = 3.0f;
+
+/* 系统设置关联状态 (自动熄屏) */
+static volatile uint16_t s_sleep_sec = SETTINGS_SLEEP_DEFAULT;  /* 自动熄屏时间(秒), 0=从不 */
+static volatile uint32_t s_last_activity_ms = 0;                /* 最近一次输入时间 */
 
 /* ========================= 输入事件队列 =========================
  * 触摸输入先转为事件, 由 LVGL 主循环(App_ProcessInputEvents)统一消费;
@@ -174,14 +179,14 @@ void App_Init(void)
     delay_init();
     LCD_Init();
     LCD_Clear(RED);
-    POINT_COLOR = BLUE;
-    BACK_COLOR = BLACK;
+   POINT_COLOR = BLUE;
+   BACK_COLOR = BLACK;
+
+   UserStore_Init();               /* 提前载入校准/密码/设置 (供校准判定与开机生效使用) */
 
    TP_Enable();                /* 按需启动触摸 (首次自动 TP_Init) */
-   if (!App_TouchIsCalibrated())
-   {
-       App_TouchCalibrate();   /* 无存储校准时才校准 (9 点), 结果写 Flash */
-   }
+   /* 不再开机阻塞校准: 已校准(含旧版迁移)直接使用; 未校准先从设置页"触摸校准"手动校准,
+      期间触摸按未校准的线性映射近似使用, 摇杆鼠标不受影响。 */
 
     lv_init();
     lv_port_disp_init();
@@ -297,6 +302,20 @@ void App_LvglTask(void)
         App_MouseUpdate();      /* 根据摇杆/触摸/PA2 更新鼠标坐标与按下状态 */
         App_ProcessInputEvents();/* 消费输入事件队列, 驱动 LVGL 点击 (含长按重复) */
         lv_task_handler();
+        /* 处理设置页发起的"写回 Flash"请求 (滑条松开即保存, 掉电后保持) */
+        if (gui_save_requested()) {
+            gui_save_settings();
+        }
+        /* 处理设置页发起的触摸校准请求 (在 LVGL 任务循环里执行, 避免事件回调内长阻塞) */
+        if (gui_cal_requested()) {
+            gui_cal_request_clear();    /* 先清除, 防止校准(含超时)退出后反复进入 */
+            App_TouchCalibrate();
+        }
+        /* 自动熄屏: 无操作超过设定时间 */
+        if (s_sleep_sec > 0 && !s_power_off &&
+            (HAL_GetTick() - s_last_activity_ms) >= (uint32_t)s_sleep_sec * 1000UL) {
+            App_EnterPowerOff();
+        }
         osDelay(5);  /* 200Hz */
     }
 }
@@ -312,6 +331,7 @@ void App_GuiInit(void)
     setup_ui(&guider_ui);       /* GUI Guider 生成的界面装配 */
     custom_init(&guider_ui);    /* 自定义回调: 显示密码/登录/小猫光标 */
     gui_cursor_set_pos(g_mouse_x, g_mouse_y);
+    App_ApplySettings();        /* 应用开机保存的系统设置 */
 }
 
 /**
@@ -321,6 +341,10 @@ void App_GuiInit(void)
   */
 void App_EnterPowerOff(void)
 {
+    /* 若有未保存的系统设置, 先写回 Flash 再熄屏 (掉电保持) */
+    if (gui_settings_is_dirty()) {
+        gui_save_settings();
+    }
     s_power_off = 1;
     s_power_off_pa2_prev = (s_pa2_btn_down ? 1U : 0U);
     LCD_LED_CLR();              /* 关闭背光 = 熄屏 */
@@ -349,6 +373,8 @@ void App_MouseUpdate(void)
     static uint8_t s_last_conn = 0xFF;
     int     new_x = (int)g_mouse_x;
     int     new_y = (int)g_mouse_y;
+    int     prev_x = (int)g_mouse_x;
+    int     prev_y = (int)g_mouse_y;
     uint8_t touched = 0;
     uint8_t pa2_now;
 
@@ -423,6 +449,11 @@ void App_MouseUpdate(void)
     if (new_y < 0) new_y = 0;
     if (new_y > 479) new_y = 479;
 
+    /* 记录用户活动时间 (用于自动熄屏) */
+    if (touched || new_x != prev_x || new_y != prev_y) {
+        s_last_activity_ms = HAL_GetTick();
+    }
+
     g_mouse_x = new_x;
     g_mouse_y = new_y;
 
@@ -443,6 +474,34 @@ void App_SetMouseSpeed(float speed)
         speed = 0.0f;
     }
     s_mouse_speed = speed;
+}
+
+/**
+  * @brief  设置自动熄屏时间
+  * @param  sec: 无操作多久后熄屏 (秒), 0=从不自动熄屏
+  */
+void App_SetSleepSec(uint16_t sec)
+{
+    s_sleep_sec = sec;
+}
+
+/**
+  * @brief  应用开机/修改后的系统设置
+  * @note   灵敏度 -> 摇杆鼠标速度; 光标大小 -> LVGL 缩放; 亮度 -> 顶层遮罩;
+  *         熄屏时间 -> 空闲计时阈值。
+  */
+void App_ApplySettings(void)
+{
+    const SysSettings_t *st = UserStore_GetSettings();
+
+    if (st == NULL) {
+        return;
+    }
+    App_SetMouseSpeed(0.6f * (float)st->sens);   /* 默认灵敏度5 -> 3.0 */
+    App_SetSleepSec(st->sleep_sec);
+    gui_cursor_set_zoom(st->cursor_zoom);
+    gui_set_brightness(st->brightness);
+    s_last_activity_ms = HAL_GetTick();
 }
 
 /**
@@ -574,13 +633,216 @@ void App_TouchDraw(void)
   */
 void App_TouchCalibrate(void)
 {
-    disp_disable_update();
-    TP_MultiPointCalibrate();
-    disp_enable_update();
-    /* 校准直接操作了 LCD, 强制 LVGL 整屏重绘, 恢复校准前的界面 */
-    if (lv_scr_act() != NULL)
+    static const uint16_t cal_sx[9] = {30, 160, 290, 30, 160, 290, 30, 160, 290};
+    static const uint16_t cal_sy[9] = {90, 90, 90, 240, 240, 240, 390, 390, 390};
+    uint16_t rx[9] = {0};
+    uint16_t ry[9] = {0};
+    uint8_t i;
+    uint32_t t0;
+    uint32_t t_total;
+    uint32_t diag_t = 0;
+    uint8_t done = 0;
+    uint16_t last_rx = 0;       /* 上一位置原始 AD (变化检测参照) */
+    uint16_t last_ry = 0;
+    uint8_t saved_bright = gui_get_brightness();
+    lv_obj_t *prev_scr = lv_scr_act();
+    lv_obj_t *scr = NULL;
+    lv_obj_t *cross_h = NULL;
+    lv_obj_t *cross_v = NULL;
+    lv_obj_t *lbl = NULL;
+    char buf[32];
+
+    gui_set_brightness(100);        /* 校准期间全亮, 避免亮度遮罩压暗 */
+    TP_Enable();
+
+    /* 建校准界面 (LVGL, 与设置页同一套显示路径, 保证可见) */
+    scr = lv_obj_create(NULL);
+    lv_obj_set_size(scr, 320, 480);
+    lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    lbl = lv_label_create(scr);
+    lv_obj_set_style_text_font(lbl, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0x1a1a2e), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_label_set_text(lbl, "Calibrate: hold cross 1/9");
+    lv_obj_set_pos(lbl, 10, 10);
+
+    cross_h = lv_obj_create(scr);
+    lv_obj_remove_style_all(cross_h);
+    lv_obj_set_size(cross_h, 44, 3);
+    lv_obj_set_style_bg_opa(cross_h, LV_OPA_COVER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(cross_h, lv_color_hex(0xe53935), LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    cross_v = lv_obj_create(scr);
+    lv_obj_remove_style_all(cross_v);
+    lv_obj_set_size(cross_v, 3, 44);
+    lv_obj_set_style_bg_opa(cross_v, LV_OPA_COVER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(cross_v, lv_color_hex(0xe53935), LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    lv_scr_load(scr);
+    t_total = HAL_GetTick();
+
+    /* 采集空闲基线 (请先别碰屏幕) 作为第一点"变化检测"的参照 */
     {
-        lv_obj_invalidate(lv_scr_act());
+        uint32_t sx = 0, sy = 0;
+        uint8_t k;
+        uint16_t x, y;
+        lv_label_set_text(lbl, "idle...");
+        lv_refr_now(NULL);
+        for (k = 0; k < 8U; k++)
+        {
+            TP_Read_XY(&x, &y);
+            sx += x;
+            sy += y;
+            delay_ms(20);
+        }
+        last_rx = (uint16_t)(sx / 8U);
+        last_ry = (uint16_t)(sy / 8U);
+    }
+
+    for (i = 0; i < 9U; i++)
+    {
+        /* 更新十字与序号 */
+        lv_obj_set_pos(cross_h, (int16_t)cal_sx[i] - 22, (int16_t)cal_sy[i] - 1);
+        lv_obj_set_pos(cross_v, (int16_t)cal_sx[i] - 1, (int16_t)cal_sy[i] - 22);
+        lv_snprintf(buf, sizeof(buf), "Calibrate: hold cross %d/9", (int)(i + 1U));
+        lv_label_set_text(lbl, buf);
+        lv_refr_now(NULL);
+
+        /* 等待手指移动到当前十字: 读数相对上一位置持续偏离 (不依赖 PEN) */
+        t0 = HAL_GetTick();
+        diag_t = 0;
+        {
+            uint8_t stable_cnt = 0;
+            for (;;)
+            {
+                uint16_t x, y;
+                uint16_t ddx, ddy;
+                TP_Read_XY(&x, &y);
+                ddx = (x > last_rx) ? (uint16_t)(x - last_rx) : (uint16_t)(last_rx - x);
+                ddy = (y > last_ry) ? (uint16_t)(y - last_ry) : (uint16_t)(last_ry - y);
+                if ((x >= 60U) && (x <= 4035U) && (y >= 60U) && (y <= 4035U) &&
+                    ((ddx > 120U) || (ddy > 120U)))
+                {
+                    if (++stable_cnt >= 3U) break;   /* 连续 3 次偏离 -> 已按下新位置 */
+                }
+                else
+                {
+                    stable_cnt = 0;
+                }
+                if ((HAL_GetTick() - diag_t) >= 100U)
+                {
+                    diag_t = HAL_GetTick();
+                    lv_snprintf(buf, sizeof(buf), "%d/9  X:%d Y:%d",
+                                (int)(i + 1U), (int)x, (int)y);
+                    lv_label_set_text(lbl, buf);
+                    lv_refr_now(NULL);
+                }
+                if ((HAL_GetTick() - t0) > 10000U)
+                {
+                    done = 1;           /* 单点超时放弃 */
+                    break;
+                }
+                delay_ms(5);
+            }
+        }
+        if (done) break;
+        delay_ms(40);                   /* 等待坐标稳定 */
+
+        /* 采样: 当前位置固定采 5 次取中值 */
+        {
+            uint16_t ax[5] = {0}, ay[5] = {0};
+            uint8_t valid = 0;
+            uint8_t k;
+
+            for (k = 0; k < 5U; k++)
+            {
+                uint16_t x, y;
+                if (TP_Read_XY2(&x, &y))
+                {
+                    ax[valid] = x;
+                    ay[valid] = y;
+                    valid++;
+                }
+                else
+                {
+                    TP_Read_XY(&x, &y);
+                    if ((x >= 60U) && (x <= 4035U) && (y >= 60U) && (y <= 4035U))
+                    {
+                        ax[valid] = x;
+                        ay[valid] = y;
+                        valid++;
+                    }
+                }
+                lv_snprintf(buf, sizeof(buf), "%d/9 sampling n:%d",
+                            (int)(i + 1U), (int)valid);
+                lv_label_set_text(lbl, buf);
+                delay_ms(8);
+            }
+            lv_refr_now(NULL);
+
+            if (valid >= 3U)
+            {
+                /* 插入排序取中值 */
+                uint8_t a, b;
+                for (a = 1; a < valid; a++)
+                {
+                    uint16_t v = ax[a];
+                    uint16_t w = ay[a];
+                    b = a;
+                    while ((b > 0) && (ax[b - 1U] > v))
+                    {
+                        ax[b] = ax[b - 1U];
+                        ay[b] = ay[b - 1U];
+                        b--;
+                    }
+                    ax[b] = v;
+                    ay[b] = w;
+                }
+                rx[i] = ax[valid / 2U];
+                ry[i] = ay[valid / 2U];
+                last_rx = rx[i];        /* 更新"上一位置", 供下一十字变化检测 */
+                last_ry = ry[i];
+            }
+            else
+            {
+                if ((HAL_GetTick() - t_total) > 60000U)
+                {
+                    done = 1;           /* 整体超时放弃 */
+                    break;
+                }
+                i--;                    /* 本点无效: 重试同一十字 */
+                continue;
+            }
+        }
+
+    }
+
+    if (!done)
+    {
+        TP_CalibrateFromPoints(cal_sx, cal_sy, rx, ry, 9);
+        if (lbl != NULL)
+        {
+            lv_label_set_text(lbl, "Calibrate OK");
+            lv_refr_now(NULL);
+            delay_ms(600);
+        }
+    }
+
+    /* 清理: 回到进入校准前的界面 */
+    if (scr != NULL)
+    {
+        if (prev_scr != NULL)
+        {
+            lv_scr_load(prev_scr);
+        }
+        lv_obj_del(scr);
+    }
+    gui_set_brightness(saved_bright);
+    if (prev_scr != NULL)
+    {
+        lv_obj_invalidate(prev_scr);
     }
 }
 
@@ -682,24 +944,28 @@ static void App_KeyEventHandler(KeyEventMsg_t *msg)
         case KEY_EVENT_PRESS_DOWN:      // 0: 按下
             if (msg->keyId == KEY_ID_0) {
                 s_pa2_btn_down = 1;     /* 左键按下: 立即生效, 摇杆移动即拖拽 */
+                s_last_activity_ms = HAL_GetTick();
             }
             break;
 
         case KEY_EVENT_CLICK:           // 1: 单击
             if (msg->keyId == KEY_ID_0) {
                 s_click_pending = 1;    /* 单击确认: LVGL 任务消费 */
+                s_last_activity_ms = HAL_GetTick();
             }
             break;
 
         case KEY_EVENT_DOUBLE_CLICK:    // 2: 双击
             if (msg->keyId == KEY_ID_0) {
                 s_double_click_pending = 1;  /* 双击 -> 右键, LVGL 任务消费 */
+                s_last_activity_ms = HAL_GetTick();
             }
             break;
 
         case KEY_EVENT_RELEASE:         // 3: 释放
             if (msg->keyId == KEY_ID_0) {
                 s_pa2_btn_down = 0;     /* 左键释放: 结束拖拽 */
+                s_last_activity_ms = HAL_GetTick();
             }
             break;
 

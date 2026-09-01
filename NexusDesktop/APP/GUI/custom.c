@@ -25,6 +25,7 @@
 #include "tom_hotspot.h"
 #include "hand_hotspot.h"
 #include "flash_store.h"
+#include "user_store.h"
 #include "app.h"
 #include <string.h>
 
@@ -39,6 +40,18 @@ static int      g_cursor_style = 0;       /* 0 = 小猫, 1 = 汤姆猫, 2 = 手�
 static int      s_cursor_x = 160;
 static int      s_cursor_y = 240;
 static int      s_error_count = 0;
+
+/* 系统设置运行状态 */
+static int          g_cursor_zoom = 100;       /* 光标缩放百分比 100..200 */
+static lv_obj_t    *g_bright_overlay = NULL;   /* 亮度遮罩 (lv_layer_top) */
+static uint8_t      g_settings_dirty = 0;      /* 1=设置已修改但未写回 Flash */
+static SysSettings_t g_edit_settings;          /* 编辑中的设置值 */
+static uint8_t      s_cur_brightness = SETTINGS_BRIGHT_DEFAULT; /* 当前生效亮度 */
+static volatile uint8_t s_cal_request = 0;     /* 触摸校准请求标志 (LVGL 任务消费) */
+static volatile uint8_t s_save_request = 0;    /* 设置写回 Flash 请求标志 (LVGL 任务消费) */
+
+/* 前置声明 (register_desktop_events 需要引用设置页打开回调) */
+static void settings_open_event_cb(lv_event_t * e);
 
 /* The custom mouse cursor image (see img_cat_cursor.c). */
 extern const lv_img_dsc_t img_cat_cursor;
@@ -171,6 +184,9 @@ static void register_desktop_events(lv_ui * ui)
         lv_obj_add_event_cb(ui->desktop_btn_switch, mouse_switch_event_cb, LV_EVENT_CLICKED,
                             ui->desktop_btn_switch_label);
     }
+    if (ui->desktop_btn_settings != NULL) {
+        lv_obj_add_event_cb(ui->desktop_btn_settings, settings_open_event_cb, LV_EVENT_CLICKED, ui);
+    }
 }
 
 static void enter_desktop(lv_ui * ui)
@@ -181,6 +197,181 @@ static void enter_desktop(lv_ui * ui)
     register_desktop_events(ui);
     gui_update_switch_buttons(App_IsMouseConnected());   /* 同步桌面按钮的连接/图案状态 */
     lv_scr_load(ui->desktop);
+}
+
+static bool settings_evts_done = false;
+
+/* 滑条变化: 立即生效并标记待保存 */
+static void settings_slider_event_cb(lv_event_t * e)
+{
+    lv_obj_t * slider = lv_event_get_target(e);
+    lv_ui * ui = &guider_ui;
+    int val = (int)lv_slider_get_value(slider);
+    char buf[16];
+
+    if (slider == ui->settings_slider_sens) {
+        g_edit_settings.sens = (uint16_t)val;
+        g_settings_dirty = 1;
+        lv_label_set_text(ui->settings_label_sens_val, settings_sens_text(val));
+        App_SetMouseSpeed(0.6f * (float)val);
+    }
+    else if (slider == ui->settings_slider_zoom) {
+        g_edit_settings.cursor_zoom = (uint16_t)val;
+        g_settings_dirty = 1;
+        lv_snprintf(buf, sizeof(buf), "%d%%", val);
+        lv_label_set_text(ui->settings_label_zoom_val, buf);
+        gui_cursor_set_zoom((uint16_t)val);
+    }
+    else if (slider == ui->settings_slider_bright) {
+        g_edit_settings.brightness = (uint16_t)val;
+        g_settings_dirty = 1;
+        lv_snprintf(buf, sizeof(buf), "%d%%", val);
+        lv_label_set_text(ui->settings_label_bright_val, buf);
+        gui_set_brightness((uint8_t)val);
+    }
+    else if (slider == ui->settings_slider_sleep) {
+        g_edit_settings.sleep_sec = settings_sleep_seconds(val);
+        g_settings_dirty = 1;
+        lv_label_set_text(ui->settings_label_sleep_val, settings_sleep_text(val));
+        App_SetSleepSec(g_edit_settings.sleep_sec);
+    }
+}
+
+/* 滑条松开: 请求把当前设置写回 Flash (由 LVGL 任务执行, 保证断电后保持) */
+static void settings_slider_released_cb(lv_event_t * e)
+{
+    (void)e;
+    if (g_settings_dirty) {
+        gui_request_save();
+    }
+}
+
+/* 返回按钮: 写回 Flash 并回到桌面 */
+static void settings_back_event_cb(lv_event_t * e)
+{
+    lv_ui * ui = (lv_ui *)lv_event_get_user_data(e);
+    gui_save_settings();
+    if (ui->desktop == NULL) {
+        setup_scr_desktop(ui);
+        register_desktop_events(ui);
+    }
+    lv_scr_load(ui->desktop);
+}
+
+/* 桌面"设置"按钮: 打开系统设置 */
+static void settings_open_event_cb(lv_event_t * e)
+{
+    (void)e;
+    gui_open_settings();
+}
+
+/* 设置页"触摸校准": 置请求标志, 由 App_LvglTask 实际执行
+   (避免在校准期间阻塞 LVGL 事件回调) */
+static void settings_cal_event_cb(lv_event_t * e)
+{
+    (void)e;
+    gui_request_calibration();
+}
+
+/* 注册设置界面事件 (仅一次) */
+static void register_settings_events(lv_ui * ui)
+{
+    if (settings_evts_done) return;
+    settings_evts_done = true;
+
+    if (ui->settings_btn_back != NULL) {
+        lv_obj_add_event_cb(ui->settings_btn_back, settings_back_event_cb, LV_EVENT_CLICKED, ui);
+    }
+    if (ui->settings_slider_sens != NULL) {
+        lv_obj_add_event_cb(ui->settings_slider_sens, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+        lv_obj_add_event_cb(ui->settings_slider_sens, settings_slider_released_cb, LV_EVENT_RELEASED, ui);
+    }
+    if (ui->settings_slider_zoom != NULL) {
+        lv_obj_add_event_cb(ui->settings_slider_zoom, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+        lv_obj_add_event_cb(ui->settings_slider_zoom, settings_slider_released_cb, LV_EVENT_RELEASED, ui);
+    }
+    if (ui->settings_slider_bright != NULL) {
+        lv_obj_add_event_cb(ui->settings_slider_bright, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+        lv_obj_add_event_cb(ui->settings_slider_bright, settings_slider_released_cb, LV_EVENT_RELEASED, ui);
+    }
+    if (ui->settings_slider_sleep != NULL) {
+        lv_obj_add_event_cb(ui->settings_slider_sleep, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+        lv_obj_add_event_cb(ui->settings_slider_sleep, settings_slider_released_cb, LV_EVENT_RELEASED, ui);
+    }
+    if (ui->settings_btn_cal != NULL) {
+        lv_obj_add_event_cb(ui->settings_btn_cal, settings_cal_event_cb, LV_EVENT_CLICKED, ui);
+    }
+}
+
+/**
+ * 打开系统设置界面 (首次创建, 事件只注册一次, 从缓存载入当前值)。
+ */
+void gui_open_settings(void)
+{
+    lv_ui * ui = &guider_ui;
+    const SysSettings_t *st = UserStore_GetSettings();
+
+    if (ui->settings == NULL) {
+        setup_scr_settings(ui);
+    }
+    register_settings_events(ui);
+
+    /* 载入缓存设置作为编辑基准 */
+    if (st != NULL) {
+        g_edit_settings = *st;
+    }
+    /* 同步滑条与数值标签 (避免事件回调误触发) */
+    if (ui->settings_slider_sens != NULL) {
+        lv_slider_set_value(ui->settings_slider_sens, g_edit_settings.sens, LV_ANIM_OFF);
+        lv_label_set_text(ui->settings_label_sens_val, settings_sens_text(g_edit_settings.sens));
+    }
+    if (ui->settings_slider_zoom != NULL) {
+        lv_slider_set_value(ui->settings_slider_zoom, g_edit_settings.cursor_zoom, LV_ANIM_OFF);
+        char zbuf[16];
+        lv_snprintf(zbuf, sizeof(zbuf), "%d%%", g_edit_settings.cursor_zoom);
+        lv_label_set_text(ui->settings_label_zoom_val, zbuf);
+    }
+    if (ui->settings_slider_bright != NULL) {
+        lv_slider_set_value(ui->settings_slider_bright, g_edit_settings.brightness, LV_ANIM_OFF);
+        char bbuf[16];
+        lv_snprintf(bbuf, sizeof(bbuf), "%d%%", g_edit_settings.brightness);
+        lv_label_set_text(ui->settings_label_bright_val, bbuf);
+    }
+    int sleep_idx = settings_sleep_index(g_edit_settings.sleep_sec);
+    if (ui->settings_slider_sleep != NULL) {
+        lv_slider_set_value(ui->settings_slider_sleep, sleep_idx, LV_ANIM_OFF);
+        lv_label_set_text(ui->settings_label_sleep_val, settings_sleep_text(sleep_idx));
+    }
+
+    lv_scr_load(ui->settings);
+}
+
+/**
+ * 把当前设置写回 Flash (掉电保持)。
+ */
+void gui_save_settings(void)
+{
+    UserStore_SaveSettings(&g_edit_settings);
+    g_settings_dirty = 0;
+    s_save_request = 0;
+}
+
+void gui_request_save(void)
+{
+    s_save_request = 1;
+}
+
+uint8_t gui_save_requested(void)
+{
+    return s_save_request;
+}
+
+/**
+ * 查询设置是否有未保存修改。
+ */
+uint8_t gui_settings_is_dirty(void)
+{
+    return g_settings_dirty;
 }
 
 static void login_event_cb(lv_event_t * e)
@@ -259,6 +450,9 @@ void gui_cursor_set_pos(int x, int y)
         case 2: hx = HAND_HOTSPOT_X; hy = HAND_HOTSPOT_Y; break;
         default: break;
     }
+    /* 按光标缩放比换算热点偏移 */
+    hx = hx * g_cursor_zoom / 100;
+    hy = hy * g_cursor_zoom / 100;
 
     for (i = 0; i < 3; i++) {
         if (imgs[i] == NULL) continue;
@@ -279,6 +473,75 @@ void gui_cursor_cycle(void)
 {
     g_cursor_style = (g_cursor_style + 1) % 3;
     gui_cursor_set_pos(s_cursor_x, s_cursor_y);
+}
+
+/**
+ * 设置光标缩放百分比 (100..200)。立即对当前与未显示的 3 个光标生效。
+ */
+void gui_cursor_set_zoom(uint16_t zoom_percent)
+{
+    lv_obj_t * imgs[3] = { g_cursor_img, g_tom_img, g_hand_img };
+    uint16_t z = zoom_percent;
+    uint16_t zz;
+    int i;
+
+    if (z < 100) z = 100;
+    if (z > 200) z = 200;
+    g_cursor_zoom = (int)z;
+    zz = (uint16_t)(((uint32_t)z * 256U) / 100U);   /* LVGL zoom: 256 = 1x */
+
+    for (i = 0; i < 3; i++) {
+        if (imgs[i] != NULL) {
+            lv_img_set_zoom(imgs[i], zz);
+        }
+    }
+    gui_cursor_set_pos(s_cursor_x, s_cursor_y);
+}
+
+/**
+ * 屏幕亮度 (0=最暗, 100=最亮)。
+ * 在顶层创建一个全屏黑色半透明遮罩, 通过对象整体透明度实现统一压暗, 立即生效。
+ */
+void gui_set_brightness(uint8_t brightness_percent)
+{
+    uint8_t b = brightness_percent;
+    uint8_t dim;
+
+    if (b > 100) b = 100;
+    s_cur_brightness = b;
+    if (g_bright_overlay == NULL) {
+        g_bright_overlay = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(g_bright_overlay);
+        lv_obj_set_pos(g_bright_overlay, 0, 0);
+        lv_obj_set_size(g_bright_overlay, 320, 480);
+        lv_obj_set_style_bg_opa(g_bright_overlay, LV_OPA_COVER, LV_PART_MAIN|LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(g_bright_overlay, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
+        lv_obj_clear_flag(g_bright_overlay, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(g_bright_overlay, LV_OBJ_FLAG_IGNORE_LAYOUT|LV_OBJ_FLAG_FLOATING);
+    }
+    /* 亮度 b% -> 遮罩不透明度 (100-b)% */
+    dim = (uint8_t)(((uint32_t)(100U - b) * 255U) / 100U);
+    lv_obj_set_style_opa(g_bright_overlay, dim, LV_PART_MAIN|LV_STATE_DEFAULT);
+}
+
+uint8_t gui_get_brightness(void)
+{
+    return s_cur_brightness;
+}
+
+void gui_request_calibration(void)
+{
+    s_cal_request = 1;
+}
+
+uint8_t gui_cal_requested(void)
+{
+    return s_cal_request;
+}
+
+void gui_cal_request_clear(void)
+{
+    s_cal_request = 0;
 }
 
 /**
@@ -330,5 +593,11 @@ void custom_init(lv_ui *ui)
     if (ui->login_btn_switch != NULL) {
         lv_obj_add_event_cb(ui->login_btn_switch, mouse_switch_event_cb, LV_EVENT_CLICKED,
                             ui->login_btn_switch_label);
+    }
+
+    /* 载入开机保存的系统设置作为编辑基准 (实际生效在 App_ApplySettings) */
+    const SysSettings_t *st = UserStore_GetSettings();
+    if (st != NULL) {
+        g_edit_settings = *st;
     }
 }

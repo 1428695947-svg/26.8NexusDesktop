@@ -38,6 +38,31 @@ typedef struct
 	lv_obj_t *desktop_btn_menu_label;
 	lv_obj_t *desktop_btn_switch;
 	lv_obj_t *desktop_btn_switch_label;
+	lv_obj_t *desktop_btn_settings;
+	lv_obj_t *desktop_btn_settings_label;
+	lv_obj_t *settings;
+	bool settings_del;
+	lv_obj_t *settings_btn_back;
+	lv_obj_t *settings_btn_back_label;
+	lv_obj_t *settings_btn_cal;
+	lv_obj_t *settings_btn_cal_label;
+	lv_obj_t *settings_label_title;
+	lv_obj_t *settings_card_sens;
+	lv_obj_t *settings_label_sens;
+	lv_obj_t *settings_label_sens_val;
+	lv_obj_t *settings_slider_sens;
+	lv_obj_t *settings_card_zoom;
+	lv_obj_t *settings_label_zoom;
+	lv_obj_t *settings_label_zoom_val;
+	lv_obj_t *settings_slider_zoom;
+	lv_obj_t *settings_card_bright;
+	lv_obj_t *settings_label_bright;
+	lv_obj_t *settings_label_bright_val;
+	lv_obj_t *settings_slider_bright;
+	lv_obj_t *settings_card_sleep;
+	lv_obj_t *settings_label_sleep;
+	lv_obj_t *settings_label_sleep_val;
+	lv_obj_t *settings_slider_sleep;
 	lv_obj_t *g_kb_top_layer;
 }lv_ui;
 
@@ -64,6 +89,7 @@ extern lv_ui guider_ui;
 
 void setup_scr_login(lv_ui *ui);
 void setup_scr_desktop(lv_ui *ui);
+void setup_scr_settings(lv_ui *ui);
 
 LV_FONT_DECLARE(lv_font_sourcehan18_custom)
 

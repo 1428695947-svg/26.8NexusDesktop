@@ -76,6 +76,7 @@ void init_scr_del_flag(lv_ui *ui)
 {
     ui->login_del = true;
     ui->desktop_del = true;
+    ui->settings_del = true;
 }
 
 void setup_ui(lv_ui *ui)

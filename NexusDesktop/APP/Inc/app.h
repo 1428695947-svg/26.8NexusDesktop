@@ -42,6 +42,8 @@ void App_SetMouseSpeed(float speed);/* 设置摇杆鼠标移动速度（px/frame
 void App_ProcessInputEvents(void); /* 消费输入事件队列, 驱动 LVGL 指针点击/长按重复 */
 void App_EnterPowerOff(void);      /* 进入熄屏状态 (关机), 摇杆移动或按键按下唤醒 */
 uint8_t App_IsMouseConnected(void);/* 查询摇杆(鼠标)是否已连接: 1=已连接 */
+void App_SetSleepSec(uint16_t sec);/* 设置自动熄屏时间(秒, 0=从不) */
+void App_ApplySettings(void);      /* 应用开机保存的系统设置 (灵敏度/大小/亮度/熄屏) */
 void App_Tick1ms(void);
 void App_KeyEventTask(void);       /* 按键事件消费任务 (FreeRTOS队列接收并处理) */
 void App_JoystickTask(void);
