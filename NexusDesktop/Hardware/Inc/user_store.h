@@ -2,13 +2,14 @@
   ******************************************************************************
   * @file    user_store.h
   * @brief   用户配置掉电存储 (片内 Flash 扇区7, 单一记录)
-  * @note    把 触摸校准 + 登录密码 + 系统设置 合并为一条记录, 存放在 STM32F407VET6
+  * @note    把 触摸校准 + 登录密码 + 系统设置 + 画图数据 合并为一条记录, 存放在 STM32F407VET6
   *          片内 Flash 最后一个 128KB 扇区 (扇区7, 0x08060000) 起始处, 掉电不丢失。
   *          - 单一记录 => 每次保存只擦写一个扇区, 三者互相不会覆盖。
   *          - 代码区在分散加载文件中被限制在扇区0~6 (0x08000000~0x0805FFFF),
   *            该存储扇区(扇区7)永远不会被代码覆盖。
   *          - 记录格式 (固定写在扇区起始):
-  *            [magic 4B][seq 4B][TP_CalData_t 16B][cal_seq 4B][pwd 21B][SysSettings_t 8B][pad 3B][crc32 4B]
+  *            [magic 4B][seq 4B][TP_CalData_t 16B][cal_seq 4B][pwd 21B][SysSettings_t 8B]
+  *            [pad 3B][DrawData_t 3844B][crc32 4B]
   ******************************************************************************
   */
 #ifndef __USER_STORE_H
@@ -30,6 +31,27 @@ typedef struct
     uint16_t brightness;    /* 屏幕亮度 10..100 (%) */
     uint16_t sleep_sec;     /* 熄屏时间(秒), 0=从不自动熄屏 */
 } SysSettings_t;
+
+/* ==================== 画图数据 (随用户记录一并掉电保存) ==================== */
+#define DRAW_SEG_MAX   320U      /* 最多保存的线段数 (每段 12B) */
+
+/* 一条线段 (RGB565 颜色 + 两个端点), 12 字节对齐 */
+typedef struct
+{
+    uint16_t color;              /* RGB565 */
+    uint16_t x1;
+    uint16_t y1;
+    uint16_t x2;
+    uint16_t y2;
+} DrawSeg_t;
+
+/* 一张画布: 底色 + 线段表 */
+typedef struct
+{
+    uint16_t  bg_color;          /* 画布底色 (RGB565) */
+    uint16_t  seg_cnt;           /* 有效线段数 (<= DRAW_SEG_MAX) */
+    DrawSeg_t segs[DRAW_SEG_MAX];
+} DrawData_t;
 
 /* 设置取值范围 */
 #define SETTINGS_SENS_MIN        1
@@ -101,6 +123,17 @@ uint8_t UserStore_LoadPassword(char *out, uint32_t size);
   * @retval 1=成功
   */
 uint8_t UserStore_SavePassword(const char *pwd);
+
+/**
+  * @brief  读取当前缓存的画图数据 (只读, 生命周期整个程序, 永不为 NULL)
+  */
+const DrawData_t *UserStore_GetDrawing(void);
+
+/**
+  * @brief  保存画图数据到 Flash (掉电保持)
+  * @retval 1=成功
+  */
+uint8_t UserStore_SaveDrawing(const DrawData_t *in);
 
 #ifdef __cplusplus
 }

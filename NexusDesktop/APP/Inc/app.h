@@ -42,6 +42,7 @@ void App_SetMouseSpeed(float speed);/* 设置摇杆鼠标移动速度（px/frame
 void App_ProcessInputEvents(void); /* 消费输入事件队列, 驱动 LVGL 指针点击/长按重复 */
 void App_EnterPowerOff(void);      /* 进入熄屏状态 (关机), 摇杆移动或按键按下唤醒 */
 uint8_t App_IsMouseConnected(void);/* 查询摇杆(鼠标)是否已连接: 1=已连接 */
+uint8_t App_MouseBtnDown(void);    /* 查询 PA2 鼠标左键是否按下 (1=按下) */
 void App_SetSleepSec(uint16_t sec);/* 设置自动熄屏时间(秒, 0=从不) */
 void App_ApplySettings(void);      /* 应用开机保存的系统设置 (灵敏度/大小/亮度/熄屏) */
 void App_Tick1ms(void);
@@ -49,6 +50,9 @@ void App_KeyEventTask(void);       /* 按键事件消费任务 (FreeRTOS队列�
 void App_JoystickTask(void);
 void App_LvglTask(void);           /* LVGL 界面重绘与处理任务 */
 void App_CreatePaintUI(void);      /* 创建 LVGL 画画板 UI */
+void App_DrawTask(void *argument); /* 画图应用任务入口 (freertos 调用) */
+void App_RequestDrawOpen(void);    /* 桌面按钮: 请求打开画图应用 */
+uint8_t App_ConsumeDrawOpenRequest(void); /* 消费画图打开请求 */
 void App_TouchMonitorTask(void);   /* 触摸监控任务 (调试用, 周期刷新 dbg_tp_* 变量) */
 void App_TouchDraw(void);          /* 触摸画图: 按下画蓝点, 拖动连成蓝线 */
 void App_TouchShowDbg(void);       /* 触摸硬件自检: 屏显引脚电平 + 原始 AD 值 */

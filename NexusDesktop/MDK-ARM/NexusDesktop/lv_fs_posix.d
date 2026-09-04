@@ -110,6 +110,7 @@ nexusdesktop/lv_fs_posix.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\libs\fsdrv\..\..\..\..\src\widgets\lv_dropdown.h \

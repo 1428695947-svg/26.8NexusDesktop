@@ -40,6 +40,8 @@ typedef struct
 	lv_obj_t *desktop_btn_switch_label;
 	lv_obj_t *desktop_btn_settings;
 	lv_obj_t *desktop_btn_settings_label;
+	lv_obj_t *desktop_btn_draw;
+	lv_obj_t *desktop_btn_draw_label;
 	lv_obj_t *settings;
 	bool settings_del;
 	lv_obj_t *settings_btn_back;

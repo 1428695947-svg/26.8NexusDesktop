@@ -37,6 +37,7 @@ typedef struct
     char         pwd[PWD_ALIGN];  /* 密码 (21B, 含 '\0') */
     SysSettings_t settings;   /* 系统设置 (8B) */
     uint8_t      pad[3];      /* 对齐到 4 字节 */
+    DrawData_t   drawing;     /* 画图数据 (底色 + 线段表) */
     uint32_t     crc;         /* magic..pad 的 CRC32 */
 } UserRec_t;
 
@@ -54,6 +55,19 @@ typedef struct
     TP_CalData_t data;
     uint32_t     crc;      /* magic..data 的 CRC32 */
 } LegacyCalRec_t;
+
+/* 上一版用户记录 (64B, 未含画图): 升级后用于迁移设置/密码/校准 */
+typedef struct
+{
+    uint32_t     magic;
+    uint32_t     seq;
+    TP_CalData_t cal;
+    uint32_t     cal_seq;
+    char         pwd[PWD_ALIGN];
+    SysSettings_t settings;
+    uint8_t      pad[3];
+    uint32_t     crc;
+} LegacyUserRec_t;
 
 /**
   * @brief  软件 CRC32 (多项式 0xEDB88320)
@@ -81,19 +95,29 @@ static uint32_t user_crc32(const uint8_t *buf, uint32_t len)
   */
 static uint8_t user_read_rec(UserRec_t *out)
 {
-    UserRec_t rec;
-
     if (*(volatile uint32_t *)USER_SECTOR_ADDR != USER_MAGIC)
     {
         return 0;
     }
-    memcpy(&rec, (const void *)USER_SECTOR_ADDR, sizeof(rec));
-    if (user_crc32((const uint8_t *)&rec, offsetof(UserRec_t, crc)) != rec.crc)
+    memcpy(out, (const void *)USER_SECTOR_ADDR, sizeof(*out));
+    if (user_crc32((const uint8_t *)out, offsetof(UserRec_t, crc)) != out->crc)
     {
         return 0;
     }
-    *out = rec;
     return 1;
+}
+
+/**
+  * @brief  校验 Flash 中的记录是否有效 (不复制到 RAM, 无大栈占用)
+  */
+static uint8_t user_flash_ok(void)
+{
+    if (*(volatile uint32_t *)USER_SECTOR_ADDR != USER_MAGIC)
+    {
+        return 0;
+    }
+    return (user_crc32((const uint8_t *)USER_SECTOR_ADDR, offsetof(UserRec_t, crc)) ==
+            *(volatile uint32_t *)(USER_SECTOR_ADDR + offsetof(UserRec_t, crc))) ? 1U : 0U;
 }
 
 /**
@@ -160,6 +184,33 @@ static void user_set_defaults(void)
     s_rec.settings.cursor_zoom = SETTINGS_ZOOM_DEFAULT;
     s_rec.settings.brightness  = SETTINGS_BRIGHT_DEFAULT;
     s_rec.settings.sleep_sec   = SETTINGS_SLEEP_DEFAULT;
+    s_rec.drawing.bg_color     = 0xFFFF;   /* 默认白底 */
+    s_rec.drawing.seg_cnt      = 0;
+}
+
+/**
+  * @brief  迁移上一版 64B 用户记录 (设置/密码/校准), 保留用户已配置内容
+  * @retval 1=成功
+  */
+static uint8_t user_import_legacy_record(void)
+{
+    LegacyUserRec_t rec;
+
+    if (*(volatile uint32_t *)USER_SECTOR_ADDR != USER_MAGIC)
+    {
+        return 0;
+    }
+    memcpy(&rec, (const void *)USER_SECTOR_ADDR, sizeof(rec));
+    if (user_crc32((const uint8_t *)&rec, offsetof(LegacyUserRec_t, crc)) != rec.crc)
+    {
+        return 0;
+    }
+
+    s_rec.cal      = rec.cal;
+    s_rec.cal_seq  = rec.cal_seq;
+    memcpy(s_rec.pwd, rec.pwd, PWD_ALIGN);
+    s_rec.settings = rec.settings;
+    return 1;
 }
 
 /**
@@ -210,7 +261,11 @@ void UserStore_Init(void)
     else
     {
         user_set_defaults();
-        user_import_legacy_cal();   /* 有旧校准则一并带过来 */
+        user_import_legacy_record();        /* 上一版 64B 记录: 保留设置/密码/校准 */
+        if (s_rec.cal_seq == 0U)
+        {
+            user_import_legacy_cal();       /* 更旧的扇区6校准 */
+        }
         user_commit();              /* 写入默认密码 + 默认设置 */
     }
 }
@@ -245,10 +300,9 @@ uint8_t UserStore_SaveSettings(const SysSettings_t *in)
   */
 uint8_t UserStore_LoadSettings(SysSettings_t *out)
 {
-    UserRec_t rec;
     if (out == NULL) return 0;
-    if (!user_read_rec(&rec)) return 0;
-    *out = rec.settings;
+    if (!user_flash_ok()) return 0;
+    memcpy(out, (const uint8_t *)USER_SECTOR_ADDR + offsetof(UserRec_t, settings), sizeof(*out));
     return 1;
 }
 
@@ -295,14 +349,13 @@ const char *UserStore_GetPassword(void)
   */
 uint8_t UserStore_LoadPassword(char *out, uint32_t size)
 {
-    UserRec_t rec;
     uint32_t n;
 
     if (out == NULL || size == 0) return 0;
-    if (!user_read_rec(&rec)) return 0;
-    n = (uint32_t)strlen(rec.pwd);
+    if (!user_flash_ok()) return 0;
+    n = (uint32_t)strlen((const char *)USER_SECTOR_ADDR + offsetof(UserRec_t, pwd));
     if (n >= size) n = size - 1U;
-    memcpy(out, rec.pwd, n);
+    memcpy(out, (const uint8_t *)USER_SECTOR_ADDR + offsetof(UserRec_t, pwd), n);
     out[n] = '\0';
     return 1;
 }
@@ -319,5 +372,27 @@ uint8_t UserStore_SavePassword(const char *pwd)
     memset(s_rec.pwd, 0, sizeof(s_rec.pwd));
     memcpy(s_rec.pwd, pwd, len);
     s_rec.pwd[len] = '\0';
+    return user_commit();
+}
+
+/**
+  * @brief  读取当前缓存的画图数据
+  */
+const DrawData_t *UserStore_GetDrawing(void)
+{
+    return &s_rec.drawing;
+}
+
+/**
+  * @brief  保存画图数据 (随整条用户记录一并写 Flash)
+  */
+uint8_t UserStore_SaveDrawing(const DrawData_t *in)
+{
+    if (in == NULL) return 0;
+    s_rec.drawing = *in;
+    if (s_rec.drawing.seg_cnt > DRAW_SEG_MAX)
+    {
+        s_rec.drawing.seg_cnt = DRAW_SEG_MAX;
+    }
     return user_commit();
 }

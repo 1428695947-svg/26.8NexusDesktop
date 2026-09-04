@@ -62,6 +62,14 @@ const osThreadAttr_t keyEventTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+/* 画图应用任务（原生 LCD 绘制, 独立于 LVGL, 防止界面状态被覆盖） */
+osThreadId_t drawTaskHandle;
+const osThreadAttr_t drawTask_attributes = {
+  .name = "drawTask",
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -118,6 +126,8 @@ void MX_FREERTOS_Init(void) {
   lvglTaskHandle = osThreadNew(LvglTask, NULL, &lvglTask_attributes);
   /* 按键事件消费任务: 处理按键队列消息 */
   keyEventTaskHandle = osThreadNew(KeyEventTask, NULL, &keyEventTask_attributes);
+  /* 画图应用任务: 原生画布, 独立任务, 与 LVGL 前台切换运行 */
+  drawTaskHandle = osThreadNew(App_DrawTask, NULL, &drawTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */

@@ -52,6 +52,7 @@ static volatile uint8_t s_save_request = 0;    /* 设置写回 Flash 请求标�
 
 /* 前置声明 (register_desktop_events 需要引用设置页打开回调) */
 static void settings_open_event_cb(lv_event_t * e);
+static void desktop_draw_event_cb(lv_event_t * e);
 
 /* The custom mouse cursor image (see img_cat_cursor.c). */
 extern const lv_img_dsc_t img_cat_cursor;
@@ -187,6 +188,9 @@ static void register_desktop_events(lv_ui * ui)
     if (ui->desktop_btn_settings != NULL) {
         lv_obj_add_event_cb(ui->desktop_btn_settings, settings_open_event_cb, LV_EVENT_CLICKED, ui);
     }
+    if (ui->desktop_btn_draw != NULL) {
+        lv_obj_add_event_cb(ui->desktop_btn_draw, desktop_draw_event_cb, LV_EVENT_CLICKED, ui);
+    }
 }
 
 static void enter_desktop(lv_ui * ui)
@@ -263,6 +267,13 @@ static void settings_open_event_cb(lv_event_t * e)
 {
     (void)e;
     gui_open_settings();
+}
+
+/* 桌面"画图"按钮: 请求打开画图应用 (LVGL 任务消费请求并切前台) */
+static void desktop_draw_event_cb(lv_event_t * e)
+{
+    (void)e;
+    App_RequestDrawOpen();
 }
 
 /* 设置页"触摸校准": 置请求标志, 由 App_LvglTask 实际执行

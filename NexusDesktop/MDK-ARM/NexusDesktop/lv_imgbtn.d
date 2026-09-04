@@ -111,6 +111,7 @@ nexusdesktop/lv_imgbtn.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\imgbtn\..\..\..\..\src\widgets\lv_dropdown.h \

@@ -23,6 +23,8 @@ nexusdesktop/app.o: ..\APP\Src\app.c ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_flash_ramfunc.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_pwr.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_pwr_ex.h \
+  ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_sd.h \
+  ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_ll_sdmmc.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_spi.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim_ex.h \
@@ -42,7 +44,8 @@ nexusdesktop/app.o: ..\APP\Src\app.c ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Middlewares\Third_Party\FreeRTOS\Source\include\queue.h \
   ..\Hardware\lcd\touch.h ..\Hardware\lcd\lcd.h ..\Hardware\lcd\gui.h \
   ..\Hardware\lcd\cal_store.h ..\Hardware\lcd\delay.h \
-  ..\Hardware\Inc\flash_store.h ..\Middlewares\Third_Party\LVGL\lvgl.h \
+  ..\Hardware\Inc\flash_store.h ..\Hardware\Inc\user_store.h \
+  ..\Middlewares\Third_Party\LVGL\lvgl.h \
   ..\Middlewares\Third_Party\LVGL\src\misc\lv_log.h \
   ..\Middlewares\Third_Party\LVGL\src\misc\..\lv_conf_internal.h \
   ..\Middlewares\Third_Party\LVGL\src\misc\..\lv_conf_kconfig.h \
@@ -151,6 +154,7 @@ nexusdesktop/app.o: ..\APP\Src\app.c ..\APP\Inc\app.h ..\Core\Inc\main.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_dropdown.h \

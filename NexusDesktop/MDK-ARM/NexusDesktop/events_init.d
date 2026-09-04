@@ -109,6 +109,7 @@ nexusdesktop/events_init.o: ..\APP\GUI\events_init.c \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_dropdown.h \

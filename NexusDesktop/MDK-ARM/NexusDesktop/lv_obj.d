@@ -135,6 +135,7 @@ nexusdesktop/lv_obj.o: ..\Middlewares\Third_Party\LVGL\src\core\lv_obj.c \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\core\..\extra\libs\gif\..\..\..\..\src\widgets\lv_dropdown.h \

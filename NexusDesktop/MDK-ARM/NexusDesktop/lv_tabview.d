@@ -111,6 +111,7 @@ nexusdesktop/lv_tabview.o: \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\extra\widgets\tabview\..\..\..\..\src\widgets\lv_dropdown.h \

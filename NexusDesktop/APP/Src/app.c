@@ -76,6 +76,10 @@ static float s_mouse_speed = 3.0f;
 static volatile uint16_t s_sleep_sec = SETTINGS_SLEEP_DEFAULT;  /* 自动熄屏时间(秒), 0=从不 */
 static volatile uint32_t s_last_activity_ms = 0;                /* 最近一次输入时间 */
 
+/* 画图应用前台标志/打开请求 (供 App_LvglTask 与画图任务切换) */
+static volatile uint8_t s_paint_fg = 0;
+static volatile uint8_t s_paint_open_req = 0;
+
 /* ========================= 输入事件队列 =========================
  * 触摸输入先转为事件, 由 LVGL 主循环(App_ProcessInputEvents)统一消费;
  * 实体按键 PA2 由 key.c V2.0 判定后经 FreeRTOS 队列 -> App_KeyEventHandler
@@ -297,11 +301,48 @@ void App_TouchShowDbg(void)
   */
 void App_LvglTask(void)
 {
+    uint8_t was_draw = 0;       /* 1=刚从画图应用切回, 需要重绘桌面 */
+
     for(;;)
     {
+        /* 画图应用前台: 暂停 LVGL (不刷新不处理输入), 避免覆盖画布/状态互踩 */
+        if (s_paint_fg)
+        {
+            was_draw = 1;
+            osDelay(10);        /* 10ms */
+            continue;
+        }
+
+        /* 画图退出/最小化后切回: 强制 LVGL 重绘当前界面 (画图直接写过 LCD) */
+        if (was_draw)
+        {
+            InEv_t evt;
+            was_draw = 0;
+            /* 复位鼠标输入状态: 画图里那一下"按下-松开"不能在桌面重复触发 */
+            while (in_evq_pop(&evt)) { }      /* 丢弃残留触摸事件 */
+            s_touch_down = 0;
+            s_pa2_btn_down = 0;
+            g_mouse_pressed = 0;
+            s_click_pending = 0;
+            s_double_click_pending = 0;
+            lv_indev_reset(NULL, NULL);       /* 清 LVGL 输入设备内部按下状态 */
+            if (lv_scr_act() != NULL)
+            {
+                lv_obj_invalidate(lv_scr_act());
+            }
+        }
+
         App_MouseUpdate();      /* 根据摇杆/触摸/PA2 更新鼠标坐标与按下状态 */
         App_ProcessInputEvents();/* 消费输入事件队列, 驱动 LVGL 点击 (含长按重复) */
         lv_task_handler();
+
+        /* 桌面入口: 请求打开画图应用 -> 置前台, 由画图任务接管屏幕 */
+        if (App_ConsumeDrawOpenRequest())
+        {
+            s_paint_fg = 1;
+            continue;           /* 下一轮进入暂停分支 */
+        }
+
         /* 处理设置页发起的"写回 Flash"请求 (滑条松开即保存, 掉电后保持) */
         if (gui_save_requested()) {
             gui_save_settings();
@@ -483,6 +524,14 @@ void App_SetMouseSpeed(float speed)
 void App_SetSleepSec(uint16_t sec)
 {
     s_sleep_sec = sec;
+}
+
+/**
+  * @brief  查询 PA2 鼠标左键是否按下 (供画图等原生应用读取)
+  */
+uint8_t App_MouseBtnDown(void)
+{
+    return s_pa2_btn_down;
 }
 
 /**
@@ -989,4 +1038,519 @@ void App_KeyEventTask(void)
             App_KeyEventHandler(&msg);
         }
     }
+}
+
+/* =========================================================================
+ * 画图应用 (原生 LCD 绘制; 独立 FreeRTOS 任务; 摇杆+PA2 鼠标操控)
+ * 说明: 全部逻辑在 app.c 内, freertos.c 只调用 App_DrawTask() 一个总函数。
+ *       - 输入只读 PA2 + 摇杆(不读触摸), 避免触摸误锁导致"画着画着就点不动";
+ *       - 画线仿 App_TouchDraw: 按下期间每帧从上一点连到当前点(连续实线);
+ *       - 按钮/色块动作在"松开沿"触发一次, 一次点击只生效一次。
+ * ========================================================================= */
+#define PAINT_CANVAS_Y   112U
+#define PAINT_BTN_Y0     4U
+#define PAINT_BTN_H      32U
+#define PAINT_BTN_W      78U
+#define PAINT_BTN_STEP   80U
+#define PAINT_SW_BG_Y    42U
+#define PAINT_SW_BG_H    30U
+#define PAINT_SW_BG_STEP 38U
+#define PAINT_BG_NUM     4U
+#define PAINT_SW_PN_Y    78U
+#define PAINT_SW_PN_H    24U
+#define PAINT_SW_PN_STEP 30U
+#define PAINT_PN_NUM     6U
+#define PAINT_PANEL_BG   0xEF5B
+#define PAINT_RING       0xF81F
+#define PAINT_CUR_HALF   4U
+#define PAINT_JOY_SPEED  4.0f
+
+static const uint16_t s_paint_bg[PAINT_BG_NUM] = { WHITE, BLACK, YELLOW, CYAN };
+static const uint16_t s_paint_pn[PAINT_PN_NUM]  = { BLACK, RED, GREEN, BLUE, YELLOW, MAGENTA };
+static const char *const s_paint_btn_txt[4] = { "Clear", "Save", "Min", "Exit" };
+
+static DrawData_t s_paint_work;                   /* 画布工作副本 */
+static uint16_t   s_paint_pen = BLACK;            /* 当前笔刷 */
+static uint8_t    s_paint_session = 0;            /* 会话有效(最小化保留) */
+
+static uint16_t s_paint_cur_x = 160;
+static uint16_t s_paint_cur_y = 240;
+static uint16_t s_paint_drawn_x = 160;
+static uint16_t s_paint_drawn_y = 240;
+static uint8_t  s_paint_cur_on = 0;
+
+/* ---- 基础绘制 ---- */
+static void paint_fill(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t c)
+{
+    if (x2 < x1) { uint16_t t = x1; x1 = x2; x2 = t; }
+    if (y2 < y1) { uint16_t t = y1; y1 = y2; y2 = t; }
+    LCD_Fill(x1, y1, x2, y2, c);
+}
+
+static void paint_btn(uint16_t x, const char *txt)
+{
+    uint16_t tw = 0;
+    const char *p;
+
+    paint_fill(x, PAINT_BTN_Y0, x + PAINT_BTN_W - 1, PAINT_BTN_Y0 + PAINT_BTN_H - 1, WHITE);
+    POINT_COLOR = BLACK;
+    LCD_DrawRectangle(x, PAINT_BTN_Y0, x + PAINT_BTN_W - 1, PAINT_BTN_Y0 + PAINT_BTN_H - 1);
+    for (p = txt; *p; p++) tw += 8U;
+    POINT_COLOR = BLACK;
+    LCD_ShowString((uint16_t)(x + (PAINT_BTN_W - tw) / 2U), (uint16_t)(PAINT_BTN_Y0 + 8U), 16,
+                   (char *)txt, 1);
+}
+
+static void paint_sel_ring(uint16_t x, uint16_t y, uint16_t w)
+{
+    POINT_COLOR = PAINT_RING;
+    LCD_DrawRectangle((uint16_t)(x - 2U), (uint16_t)(y - 2U),
+                      (uint16_t)(x + w + 1U), (uint16_t)(y + w + 1U));
+    LCD_DrawRectangle((uint16_t)(x - 3U), (uint16_t)(y - 3U),
+                      (uint16_t)(x + w + 2U), (uint16_t)(y + w + 2U));
+}
+
+static void paint_bg_swatch(uint16_t idx)
+{
+    uint16_t x = (uint16_t)(44U + idx * PAINT_SW_BG_STEP);
+    paint_fill(x, PAINT_SW_BG_Y, x + PAINT_SW_BG_H - 1, PAINT_SW_BG_Y + PAINT_SW_BG_H - 1,
+               s_paint_bg[idx]);
+    POINT_COLOR = BLACK;
+    LCD_DrawRectangle(x, PAINT_SW_BG_Y, x + PAINT_SW_BG_H - 1, PAINT_SW_BG_Y + PAINT_SW_BG_H - 1);
+    if (s_paint_work.bg_color == s_paint_bg[idx])
+    {
+        paint_sel_ring(x, PAINT_SW_BG_Y, PAINT_SW_BG_H);
+    }
+}
+
+static void paint_pn_swatch(uint16_t idx)
+{
+    uint16_t x = (uint16_t)(40U + idx * PAINT_SW_PN_STEP);
+    paint_fill(x, PAINT_SW_PN_Y, x + PAINT_SW_PN_H - 1, PAINT_SW_PN_Y + PAINT_SW_PN_H - 1,
+               s_paint_pn[idx]);
+    POINT_COLOR = BLACK;
+    LCD_DrawRectangle(x, PAINT_SW_PN_Y, x + PAINT_SW_PN_H - 1, PAINT_SW_PN_Y + PAINT_SW_PN_H - 1);
+    if (s_paint_pen == s_paint_pn[idx])
+    {
+        paint_sel_ring(x, PAINT_SW_PN_Y, PAINT_SW_PN_H);
+    }
+}
+
+/* 面板局部恢复: 只重画与矩形相交的按钮/色块/标签 */
+static void paint_panel_restore(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+    int i;
+    uint8_t bg_lbl = 0;
+    uint8_t pn_lbl = 0;
+
+    paint_fill(x0, y0, x1, y1, PAINT_PANEL_BG);
+    for (i = 0; i < 4; i++)
+    {
+        uint16_t bx = (uint16_t)(1 + i * PAINT_BTN_STEP);
+        if (x1 >= bx && x0 <= (uint16_t)(bx + PAINT_BTN_W - 1U) &&
+            y1 >= PAINT_BTN_Y0 && y0 <= (uint16_t)(PAINT_BTN_Y0 + PAINT_BTN_H - 1U))
+        {
+            paint_btn(bx, s_paint_btn_txt[i]);
+        }
+    }
+    for (i = 0; i < (int)PAINT_BG_NUM; i++)
+    {
+        uint16_t sx = (uint16_t)(44 + i * PAINT_SW_BG_STEP);
+        if (x1 >= (uint16_t)(sx - 3) && x0 <= (uint16_t)(sx + PAINT_SW_BG_H + 2U) &&
+            y1 >= (uint16_t)(PAINT_SW_BG_Y - 3) && y0 <= (uint16_t)(PAINT_SW_BG_Y + PAINT_SW_BG_H + 2U))
+        {
+            paint_bg_swatch((uint16_t)i);
+        }
+    }
+    for (i = 0; i < (int)PAINT_PN_NUM; i++)
+    {
+        uint16_t sx = (uint16_t)(40 + i * PAINT_SW_PN_STEP);
+        if (x1 >= (uint16_t)(sx - 3) && x0 <= (uint16_t)(sx + PAINT_SW_PN_H + 2U) &&
+            y1 >= (uint16_t)(PAINT_SW_PN_Y - 3) && y0 <= (uint16_t)(PAINT_SW_PN_Y + PAINT_SW_PN_H + 2U))
+        {
+            paint_pn_swatch((uint16_t)i);
+        }
+    }
+    if (x1 >= 4 && x0 <= 40 && y1 >= (uint16_t)(PAINT_SW_BG_Y + 4) &&
+        y0 <= (uint16_t)(PAINT_SW_BG_Y + 20)) bg_lbl = 1;
+    if (x1 >= 4 && x0 <= 40 && y1 >= (uint16_t)(PAINT_SW_PN_Y + 2) &&
+        y0 <= (uint16_t)(PAINT_SW_PN_Y + 18)) pn_lbl = 1;
+    BACK_COLOR = PAINT_PANEL_BG;
+    POINT_COLOR = BLACK;
+    if (bg_lbl) LCD_ShowString(4, PAINT_SW_BG_Y + 6, 16, "BG:", 0);
+    if (pn_lbl) LCD_ShowString(4, PAINT_SW_PN_Y + 4, 16, "PN:", 0);
+}
+
+static void paint_ui_panel(void)
+{
+    uint16_t i;
+
+    paint_fill(0, 0, 319, PAINT_CANVAS_Y - 1, PAINT_PANEL_BG);
+    for (i = 0; i < 4; i++)
+    {
+        paint_btn((uint16_t)(1 + i * PAINT_BTN_STEP), s_paint_btn_txt[i]);
+    }
+    BACK_COLOR = PAINT_PANEL_BG;
+    POINT_COLOR = BLACK;
+    LCD_ShowString(4, PAINT_SW_BG_Y + 6, 16, "BG:", 0);
+    for (i = 0; i < PAINT_BG_NUM; i++) paint_bg_swatch(i);
+    POINT_COLOR = BLACK;
+    LCD_ShowString(4, PAINT_SW_PN_Y + 4, 16, "PN:", 0);
+    for (i = 0; i < PAINT_PN_NUM; i++) paint_pn_swatch(i);
+}
+
+static void paint_canvas(void)
+{
+    uint16_t i;
+
+    paint_fill(0, PAINT_CANVAS_Y, 319, 479, s_paint_work.bg_color);
+    for (i = 0; i < s_paint_work.seg_cnt; i++)
+    {
+        POINT_COLOR = s_paint_work.segs[i].color;
+        if (s_paint_work.segs[i].x1 == s_paint_work.segs[i].x2 &&
+            s_paint_work.segs[i].y1 == s_paint_work.segs[i].y2)
+        {
+            LCD_DrawPoint(s_paint_work.segs[i].x1, s_paint_work.segs[i].y1);
+        }
+        else
+        {
+            LCD_DrawLine(s_paint_work.segs[i].x1, s_paint_work.segs[i].y1,
+                         s_paint_work.segs[i].x2, s_paint_work.segs[i].y2);
+        }
+    }
+}
+
+static void paint_redraw_all(void)
+{
+    paint_ui_panel();
+    paint_canvas();
+}
+
+/* ---- 光标 (仅用于非笔画状态瞄准) ---- */
+static void paint_restore_rect(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+    uint16_t i;
+    uint16_t cy0 = (y0 > PAINT_CANVAS_Y) ? y0 : PAINT_CANVAS_Y;
+
+    if (cy0 > y1) return;
+    paint_fill(x0, cy0, x1, y1, s_paint_work.bg_color);
+    for (i = 0; i < s_paint_work.seg_cnt; i++)
+    {
+        DrawSeg_t *s = &s_paint_work.segs[i];
+        if (s->x1 <= x1 && s->x2 >= x0 && s->y1 <= y1 && s->y2 >= cy0)
+        {
+            POINT_COLOR = s->color;
+            if (s->x1 == s->x2 && s->y1 == s->y2) LCD_DrawPoint(s->x1, s->y1);
+            else LCD_DrawLine(s->x1, s->y1, s->x2, s->y2);
+        }
+    }
+}
+
+static void paint_cursor_erase(void)
+{
+    uint16_t x0, y0, x1, y1;
+
+    if (!s_paint_cur_on) return;
+    x0 = (s_paint_drawn_x > PAINT_CUR_HALF + 1U)
+         ? (uint16_t)(s_paint_drawn_x - PAINT_CUR_HALF - 1U) : 0U;
+    y0 = (s_paint_drawn_y > PAINT_CUR_HALF + 1U)
+         ? (uint16_t)(s_paint_drawn_y - PAINT_CUR_HALF - 1U) : 0U;
+    x1 = (uint16_t)(s_paint_drawn_x + PAINT_CUR_HALF + 1U);
+    if (x1 >= LCD_W) x1 = (uint16_t)(LCD_W - 1U);
+    y1 = (uint16_t)(s_paint_drawn_y + PAINT_CUR_HALF + 1U);
+    if (y1 >= LCD_H) y1 = (uint16_t)(LCD_H - 1U);
+
+    if (y0 < PAINT_CANVAS_Y)
+    {
+        uint16_t py1 = (y1 < PAINT_CANVAS_Y) ? y1 : (uint16_t)(PAINT_CANVAS_Y - 1U);
+        paint_panel_restore(x0, y0, x1, py1);
+        y0 = PAINT_CANVAS_Y;
+    }
+    if (y0 <= y1) paint_restore_rect(x0, y0, x1, y1);
+    s_paint_cur_on = 0;
+}
+
+static void paint_cursor_draw(void)
+{
+    uint16_t x = s_paint_cur_x;
+    uint16_t y = s_paint_cur_y;
+
+    if (x < PAINT_CUR_HALF) x = PAINT_CUR_HALF;
+    if (x > (uint16_t)(LCD_W - 1U - PAINT_CUR_HALF)) x = (uint16_t)(LCD_W - 1U - PAINT_CUR_HALF);
+    if (y < PAINT_CUR_HALF) y = PAINT_CUR_HALF;
+    if (y > (uint16_t)(LCD_H - 1U - PAINT_CUR_HALF)) y = (uint16_t)(LCD_H - 1U - PAINT_CUR_HALF);
+    s_paint_cur_x = x;
+    s_paint_cur_y = y;
+
+    paint_fill((uint16_t)(x - PAINT_CUR_HALF), (uint16_t)(y - PAINT_CUR_HALF),
+               (uint16_t)(x + PAINT_CUR_HALF), (uint16_t)(y + PAINT_CUR_HALF), BLACK);
+    paint_fill((uint16_t)(x - 1U), (uint16_t)(y - 1U),
+               (uint16_t)(x + 1U), (uint16_t)(y + 1U), WHITE);
+    s_paint_drawn_x = x;
+    s_paint_drawn_y = y;
+    s_paint_cur_on = 1;
+}
+
+/* ---- 命中测试 / 动作 ---- */
+static int paint_hit(int x, int y)
+{
+    int i;
+
+    if (y >= PAINT_BTN_Y0 && y < (int)(PAINT_BTN_Y0 + PAINT_BTN_H))
+    {
+        for (i = 0; i < 4; i++)
+        {
+            int bx = (int)(1 + i * PAINT_BTN_STEP);
+            if (x >= bx && x < bx + (int)PAINT_BTN_W) return 1 + i;
+        }
+    }
+    if (y >= PAINT_SW_BG_Y && y < (int)(PAINT_SW_BG_Y + PAINT_SW_BG_H))
+    {
+        for (i = 0; i < (int)PAINT_BG_NUM; i++)
+        {
+            int sx = (int)(44 + i * PAINT_SW_BG_STEP);
+            if (x >= sx && x < sx + (int)PAINT_SW_BG_H) return 10 + i;
+        }
+    }
+    if (y >= PAINT_SW_PN_Y && y < (int)(PAINT_SW_PN_Y + PAINT_SW_PN_H))
+    {
+        for (i = 0; i < (int)PAINT_PN_NUM; i++)
+        {
+            int sx = (int)(40 + i * PAINT_SW_PN_STEP);
+            if (x >= sx && x < sx + (int)PAINT_SW_PN_H) return 20 + i;
+        }
+    }
+    if (y >= (int)PAINT_CANVAS_Y) return 100;
+    return 0;
+}
+
+static void paint_clear(void)
+{
+    s_paint_work.seg_cnt = 0;
+    paint_canvas();
+}
+
+static void paint_save(void)
+{
+    paint_fill(100, PAINT_CANVAS_Y + 4, 220, PAINT_CANVAS_Y + 24, WHITE);
+    POINT_COLOR = BLACK;
+    LCD_DrawRectangle(100, PAINT_CANVAS_Y + 4, 220, PAINT_CANVAS_Y + 24);
+    LCD_ShowString(124, PAINT_CANVAS_Y + 8, 16, "SAVED", 1);
+    UserStore_SaveDrawing(&s_paint_work);
+    delay_ms(500);
+    paint_canvas();
+}
+
+static void paint_set_bg(uint8_t idx)
+{
+    if (idx >= PAINT_BG_NUM) return;
+    s_paint_work.bg_color = s_paint_bg[idx];
+    paint_canvas();
+    paint_ui_panel();
+}
+
+/* 摇杆移动光标 (画图输入只用摇杆+PA2, 不读触摸, 防止触摸误锁) */
+static void paint_joy_move(void)
+{
+    if (hjoy.x_norm != 0.0f || hjoy.y_norm != 0.0f)
+    {
+        int dx = (int)(hjoy.x_norm * PAINT_JOY_SPEED);
+        int dy = (int)(hjoy.y_norm * PAINT_JOY_SPEED);
+        if (dx != 0)
+        {
+            int nx = (int)s_paint_cur_x + dx;
+            s_paint_cur_x = (nx < 0) ? 0U
+                           : (uint16_t)((nx > (int)(LCD_W - 1U)) ? (int)(LCD_W - 1U) : nx);
+        }
+        if (dy != 0)
+        {
+            int ny = (int)s_paint_cur_y + dy;
+            s_paint_cur_y = (ny < 0) ? 0U
+                           : (uint16_t)((ny > (int)(LCD_H - 1U)) ? (int)(LCD_H - 1U) : ny);
+        }
+    }
+}
+
+/* 前台运行: 按下画布=起笔并连续画线; 松开画布=抬笔; 按钮/色块=松开沿单击 */
+static void paint_run(void)
+{
+    uint16_t pen_x = 0, pen_y = 0;      /* 笔画上一屏幕点 */
+    uint16_t pers_x = 0, pers_y = 0;    /* 持久化节流锚点 */
+    uint8_t stroking = 0;
+    uint8_t btn_prev = 0;
+    uint8_t quit = 0;
+    uint32_t stroke_last = 0;
+    uint32_t t0;
+
+    paint_redraw_all();
+
+    s_paint_cur_x = (g_mouse_x > 0) ? (uint16_t)g_mouse_x : 0U;
+    s_paint_cur_y = (g_mouse_y > 0) ? (uint16_t)g_mouse_y : 0U;
+    if (s_paint_cur_x >= LCD_W) s_paint_cur_x = (uint16_t)(LCD_W - 1U);
+    if (s_paint_cur_y >= LCD_H) s_paint_cur_y = (uint16_t)(LCD_H - 1U);
+    s_paint_cur_on = 0;
+    s_paint_drawn_x = s_paint_cur_x;
+    s_paint_drawn_y = s_paint_cur_y;
+
+    /* 等待打开应用的那一下按键松开 */
+    t0 = HAL_GetTick();
+    while (App_MouseBtnDown() && ((HAL_GetTick() - t0) < 500U)) osDelay(5);
+    btn_prev = App_MouseBtnDown();
+
+    while (!quit)
+    {
+        uint8_t down;
+        uint8_t moved;
+        uint8_t action_redraw = 0;
+
+        paint_joy_move();
+        down = App_MouseBtnDown() ? 1U : 0U;
+        moved = (s_paint_cur_x != s_paint_drawn_x) || (s_paint_cur_y != s_paint_drawn_y);
+
+        if (stroking)
+        {
+            /* 笔画中: 光标隐藏, 每帧从上一点连到当前点 (连续实线) */
+            if (moved)
+            {
+                uint16_t x = s_paint_cur_x, y = s_paint_cur_y;
+                if (y < PAINT_CANVAS_Y) y = PAINT_CANVAS_Y;
+                if (x >= LCD_W) x = (uint16_t)(LCD_W - 1U);
+                POINT_COLOR = s_paint_pen;
+                LCD_DrawLine(pen_x, pen_y, x, y);
+                pen_x = x;
+                pen_y = y;
+                stroke_last = HAL_GetTick();
+                {
+                    uint16_t ddx = (x > pers_x) ? (x - pers_x) : (pers_x - x);
+                    uint16_t ddy = (y > pers_y) ? (y - pers_y) : (pers_y - y);
+                    if ((ddx >= 3U || ddy >= 3U) && s_paint_work.seg_cnt < DRAW_SEG_MAX)
+                    {
+                        DrawSeg_t *sg = &s_paint_work.segs[s_paint_work.seg_cnt];
+                        sg->color = s_paint_pen;
+                        sg->x1 = pers_x; sg->y1 = pers_y;
+                        sg->x2 = x;     sg->y2 = y;
+                        s_paint_work.seg_cnt++;
+                        pers_x = x;
+                        pers_y = y;
+                    }
+                }
+            }
+            if (!down || ((HAL_GetTick() - stroke_last) > 3000U))
+            {
+                stroking = 0;       /* 抬笔或看门狗超时: 结束笔画, 恢复光标 */
+            }
+        }
+        else
+        {
+            if (moved) paint_cursor_erase();
+
+            if (down && !btn_prev)          /* 按下沿 */
+            {
+                if (paint_hit((int)s_paint_cur_x, (int)s_paint_cur_y) == 100)
+                {
+                    uint16_t x = s_paint_cur_x, y = s_paint_cur_y;
+                    if (y < PAINT_CANVAS_Y) y = PAINT_CANVAS_Y;
+                    if (x >= LCD_W) x = (uint16_t)(LCD_W - 1U);
+                    paint_cursor_erase();   /* 隐藏方块光标, 进入连续画线 */
+                    if (s_paint_work.seg_cnt < DRAW_SEG_MAX)
+                    {
+                        DrawSeg_t *sg = &s_paint_work.segs[s_paint_work.seg_cnt];
+                        sg->color = s_paint_pen;
+                        sg->x1 = x; sg->y1 = y;
+                        sg->x2 = x; sg->y2 = y;
+                        s_paint_work.seg_cnt++;
+                    }
+                    POINT_COLOR = s_paint_pen;
+                    LCD_DrawPoint(x, y);
+                    pen_x = x; pen_y = y;
+                    pers_x = x; pers_y = y;
+                    stroking = 1;
+                    stroke_last = HAL_GetTick();
+                }
+            }
+            else if (!down && btn_prev)     /* 松开沿: 一次单击一次动作 */
+            {
+                int act = paint_hit((int)s_paint_cur_x, (int)s_paint_cur_y);
+                if (act >= 1 && act <= 4)
+                {
+                    if (act == 1)      { paint_clear(); action_redraw = 1; }
+                    else if (act == 2) { paint_save(); action_redraw = 1; }
+                    else if (act == 3) { s_paint_session = 1; quit = 1; }   /* 最小化 */
+                    else               { s_paint_session = 0; quit = 1; }   /* 退出 */
+                }
+                else if (act >= 10 && act < 10 + (int)PAINT_BG_NUM)
+                {
+                    paint_set_bg((uint8_t)(act - 10));
+                    action_redraw = 1;
+                }
+                else if (act >= 20 && act < 20 + (int)PAINT_PN_NUM)
+                {
+                    s_paint_pen = s_paint_pn[act - 20];
+                    paint_ui_panel();
+                    action_redraw = 1;
+                }
+            }
+        }
+
+        g_mouse_x = (int)s_paint_cur_x;     /* 同步桌面鼠标位置 */
+        g_mouse_y = (int)s_paint_cur_y;
+
+        if (!quit && !stroking && (moved || action_redraw || !s_paint_cur_on))
+        {
+            paint_cursor_draw();
+        }
+        btn_prev = down;
+        osDelay(5);
+    }
+
+    /* 退出/最小化: 等按键松开再交还, 防桌面重复触发 */
+    t0 = HAL_GetTick();
+    while (App_MouseBtnDown() && ((HAL_GetTick() - t0) < 1000U)) osDelay(5);
+    paint_cursor_erase();
+    g_mouse_x = (int)s_paint_cur_x;
+    g_mouse_y = (int)s_paint_cur_y;
+}
+
+/**
+  * @brief  画图应用 FreeRTOS 任务 (freertos.c 直接调用本函数)
+  */
+void App_DrawTask(void *argument)
+{
+    (void)argument;
+    for (;;)
+    {
+        while (!s_paint_fg) osDelay(10);
+
+        /* 新会话(开机/退出后)载入已保存绘图; 最小化恢复沿用 RAM 画布 */
+        if (!s_paint_session)
+        {
+            s_paint_work = *UserStore_GetDrawing();
+            if (s_paint_work.seg_cnt > DRAW_SEG_MAX) s_paint_work.seg_cnt = DRAW_SEG_MAX;
+            s_paint_session = 1;
+        }
+        paint_run();
+        s_paint_fg = 0;
+        osDelay(20);
+    }
+}
+
+/**
+  * @brief  桌面"画图"按钮请求打开应用 (由 custom.c 事件调用)
+  */
+void App_RequestDrawOpen(void)
+{
+    s_paint_open_req = 1;
+}
+
+/**
+  * @brief  消费打开请求 (LVGL 任务轮询)
+  */
+uint8_t App_ConsumeDrawOpenRequest(void)
+{
+    if (s_paint_open_req)
+    {
+        s_paint_open_req = 0;
+        return 1;
+    }
+    return 0;
 }

@@ -108,6 +108,7 @@ nexusdesktop/custom.o: ..\APP\GUI\custom.c \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_table.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_checkbox.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_bar.h \
+  ..\Middlewares\Third_Party\LVGL\src\widgets\..\misc\lv_anim.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_slider.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_btnmatrix.h \
   ..\Middlewares\Third_Party\LVGL\src\widgets\lv_dropdown.h \
@@ -234,6 +235,11 @@ nexusdesktop/custom.o: ..\APP\GUI\custom.c \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_flash_ramfunc.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_pwr.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_pwr_ex.h \
+  ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_sd.h \
+  ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_ll_sdmmc.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_spi.h \
   ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim.h \
-  ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim_ex.h
+  ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim_ex.h \
+  ..\Hardware\Inc\user_store.h ..\Hardware\lcd\cal_store.h \
+  ..\APP\Inc\app.h ..\Core\Inc\tim.h ..\Hardware\Inc\key.h \
+  ..\Hardware\Inc\joystick.h ..\Core\Inc\adc.h
