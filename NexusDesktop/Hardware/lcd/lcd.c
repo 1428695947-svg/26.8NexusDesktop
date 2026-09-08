@@ -73,6 +73,30 @@ void Lcd_WriteData_16Bit(uint16_t Data)
 }
 
 /**
+  * @brief  连续写入一块 RGB565 像素
+  * @note   ILI9488 的 SPI 像素接口工作在 18 bit 模式，每像素仍发送 RGB 三字节；
+  *         但整块传输只切换一次 CS/RS，避免逐字节 HAL GPIO 开销。
+  */
+void LCD_WritePixelsRGB565(const uint16_t *pixels, uint32_t count)
+{
+    uint32_t i;
+
+    if (pixels == NULL || count == 0U) {
+        return;
+    }
+    LCD_CS_CLR();
+    LCD_RS_SET();
+    for (i = 0U; i < count; i++) {
+        uint16_t color = pixels[i];
+
+        (void)SPI_WriteByte((uint8_t)((color >> 8) & 0xF8U));
+        (void)SPI_WriteByte((uint8_t)((color >> 3) & 0xFCU));
+        (void)SPI_WriteByte((uint8_t)(color << 3));
+    }
+    LCD_CS_SET();
+}
+
+/**
   * @brief  在指定位置画一个点
   */
 void LCD_DrawPoint(uint16_t x, uint16_t y)

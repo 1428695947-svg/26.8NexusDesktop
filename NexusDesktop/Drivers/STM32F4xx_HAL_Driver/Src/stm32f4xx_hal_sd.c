@@ -282,6 +282,9 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
+/* 实板诊断: 最近一次 ACMD41 OCR 响应与上电协商次数。 */
+static volatile uint32_t s_sd_last_ocr = 0U;
+static volatile uint32_t s_sd_voltage_trials = 0U;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 /** @defgroup SD_Private_Functions SD Private Functions
@@ -2767,6 +2770,7 @@ static uint32_t SD_PowerON(SD_HandleTypeDef *hsd)
   __IO uint32_t count = 0U;
   uint32_t response = 0U, validvoltage = 0U;
   uint32_t errorstate;
+  uint32_t tickstart = HAL_GetTick();
 
   /* CMD0: GO_IDLE_STATE */
   errorstate = SDMMC_CmdGoIdleState(hsd->Instance);
@@ -2804,7 +2808,9 @@ static uint32_t SD_PowerON(SD_HandleTypeDef *hsd)
   }
   /* SD CARD */
   /* Send ACMD41 SD_APP_OP_COND with Argument 0x80100000 */
-  while((count < SDMMC_MAX_VOLT_TRIAL) && (validvoltage == 0U))
+  /* 板级容错: 卡缺失或链路异常时，避免 65535 次协商长期占住后台任务。 */
+  while((count < SDMMC_MAX_VOLT_TRIAL) && (validvoltage == 0U) &&
+        ((HAL_GetTick() - tickstart) < 1200U))
   {
     /* SEND CMD55 APP_CMD with RCA as 0 */
     errorstate = SDMMC_CmdAppCommand(hsd->Instance, 0);
@@ -2822,14 +2828,16 @@ static uint32_t SD_PowerON(SD_HandleTypeDef *hsd)
 
     /* Get command response */
     response = SDIO_GetResponse(hsd->Instance, SDIO_RESP1);
+    s_sd_last_ocr = response;
 
     /* Get operating voltage*/
     validvoltage = (((response >> 31U) == 1U) ? 1U : 0U);
 
     count++;
+    s_sd_voltage_trials = count;
   }
 
-  if(count >= SDMMC_MAX_VOLT_TRIAL)
+  if(validvoltage == 0U)
   {
     return HAL_SD_ERROR_INVALID_VOLTRANGE;
   }

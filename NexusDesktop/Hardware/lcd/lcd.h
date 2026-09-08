@@ -112,6 +112,7 @@ uint16_t LCD_ReadRAM(void);
 uint16_t LCD_BGR2RGB(uint16_t c);
 void LCD_SetParam(void);
 void Lcd_WriteData_16Bit(uint16_t Data);
+void LCD_WritePixelsRGB565(const uint16_t *pixels, uint32_t count);
 void LCD_direction(uint8_t direction);
 
 #endif

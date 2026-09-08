@@ -208,6 +208,14 @@ uint32_t Key_GetTick(void)
     return s_tickCounter;
 }
 
+uint8_t Key_IsPressed(uint8_t keyId)
+{
+    if (keyId >= KEY_MAX_NUM) {
+        return 0U;
+    }
+    return s_keyHandles[keyId].isPressed;
+}
+
 /* ========================= 私有函数实现 ========================= */
 
 /**

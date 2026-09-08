@@ -59,6 +59,7 @@
 #include "math.h"
 #include "gui.h"	    
 #include "cal_store.h"
+#include "shared_bus.h"
 
 _m_tp_dev tp_dev=
 {
@@ -131,8 +132,9 @@ void TP_Write_Byte(uint8_t num)
  * @parameters :CMD:Read command,0xD0 for x,0x90 for y
  * @retvalue   :Read data
 ******************************************************************************/    
-uint16_t TP_Read_AD(uint8_t CMD)	  
-{ 	 
+uint16_t TP_Read_AD(uint8_t CMD)
+{
+	if (SharedBus_IsSdSelected()) return 0;
 	uint8_t count=0; 	  
 	uint16_t Num=0; 
 	TCLK_CLR();		//先拉低时钟 	 
@@ -303,7 +305,7 @@ uint8_t TP_Scan(uint8_t tp)
     uint8_t pressed;
 
     /* 触摸未使能时不扫描 (LVGL indev 等直接调用者也返回"未按下") */
-    if (s_tp_enabled == 0)
+    if ((s_tp_enabled == 0) || SharedBus_IsSdSelected())
     {
         return 0;
     }
@@ -645,31 +647,14 @@ uint8_t TP_Init(void)
     __HAL_RCC_GPIOC_CLK_ENABLE();
     __HAL_RCC_GPIOD_CLK_ENABLE();
 
-    /* PD2: T_DOUT 普通输入上拉 */
-    GPIO_InitStruct.Pin  = TP_DOUT_PIN;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(TP_DOUT_PORT, &GPIO_InitStruct);
+    /* PC10/PC11/PC12/PD2 与 SDIO 共用，由板级仲裁层统一恢复触摸模式。 */
+    SharedBus_SelectTouch();
 
     /* PD3: T_IRQ 外部中断输入 (下降沿) + 上拉 */
     GPIO_InitStruct.Pin  = TP_PEN_PIN;
     GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(TP_PEN_PORT, &GPIO_InitStruct);
-
-    /* PC10: T_CLK 推挽输出 */
-    GPIO_InitStruct.Pin   = TP_CLK_PIN;
-    GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    HAL_GPIO_Init(TP_CLK_PORT, &GPIO_InitStruct);
-
-    /* PC11: T_CS 推挽输出 */
-    GPIO_InitStruct.Pin  = TP_CS_PIN;
-    HAL_GPIO_Init(TP_CS_PORT, &GPIO_InitStruct);
-
-    /* PC12: T_DIN 推挽输出 */
-    GPIO_InitStruct.Pin  = TP_DIN_PIN;
-    HAL_GPIO_Init(TP_DIN_PORT, &GPIO_InitStruct);
 
     /* 使能 EXTI3 中断 (T_IRQ=PD3, 下降沿触发) */
     HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);

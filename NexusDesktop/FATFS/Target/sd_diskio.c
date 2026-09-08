@@ -31,6 +31,8 @@
 #include <string.h>
 #include <stdio.h>
 
+extern SD_HandleTypeDef hsd;
+
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 
@@ -84,7 +86,7 @@ See BSP_SD_ErrorCallback() and BSP_SD_AbortCallback() below
 * transfer data
 */
 /* USER CODE BEGIN enableScratchBuffer */
-/* #define ENABLE_SCRATCH_BUFFER */
+#define ENABLE_SCRATCH_BUFFER
 /* USER CODE END enableScratchBuffer */
 
 /* Private variables ---------------------------------------------------------*/
@@ -97,6 +99,8 @@ __ALIGN_BEGIN static uint8_t scratch[BLOCKSIZE] __ALIGN_END;
 #endif
 /* Disk status */
 static volatile DSTATUS Stat = STA_NOINIT;
+static volatile uint8_t s_sd_init_result = 0U;
+static volatile uint8_t s_sd_card_state = 0U;
 
 #if (osCMSIS <= 0x20000U)
 static osMessageQId SDQueueID = NULL;
@@ -147,7 +151,8 @@ static int SD_CheckStatusWithTimeout(uint32_t timeout)
   while( osKernelGetTickCount() - timer < timeout)
 #endif
   {
-    if (BSP_SD_GetCardState() == SD_TRANSFER_OK)
+    s_sd_card_state = HAL_SD_GetCardState(&hsd);
+    if (s_sd_card_state == HAL_SD_CARD_TRANSFER)
     {
       return 0;
     }
@@ -189,9 +194,15 @@ Stat = STA_NOINIT;
   {
 #if !defined(DISABLE_SD_INIT)
 
-    if(BSP_SD_Init() == MSD_OK)
+    s_sd_init_result = BSP_SD_Init();
+    if(s_sd_init_result == MSD_OK)
     {
-      Stat = SD_CheckStatus(lun);
+      /* HAL_SD_Init/4-bit 总线切换结束后，部分卡仍会短暂处于 BUSY。
+       * 生成代码原先只采样一次，容易把已插入的卡误判为未初始化。 */
+      if (SD_CheckStatusWithTimeout(1000U) == 0)
+      {
+        Stat &= (DSTATUS)~STA_NOINIT;
+      }
     }
 
 #else
@@ -271,7 +282,9 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
   }
 
 #if defined(ENABLE_SCRATCH_BUFFER)
-  if (!((uint32_t)buff & 0x3))
+  /* 始终通过驱动独占且对齐的中转缓冲执行 DMA；FatFs 内部缓冲的
+   * 对齐和生命周期不应成为 SDIO DMA 的隐含前提。 */
+  if (0)
   {
 #endif
     /* Fast path cause destination buffer is correctly aligned */
@@ -434,7 +447,7 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
   }
 
 #if defined(ENABLE_SCRATCH_BUFFER)
-  if (!((uint32_t)buff & 0x3))
+  if (0)
   {
 #endif
 #if (ENABLE_SD_DMA_CACHE_MAINTENANCE == 1)
@@ -514,14 +527,14 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
 
           if (event.status == osEventMessage)
           {
-            if (event.value.v == READ_CPLT_MSG)
+            if (event.value.v == WRITE_CPLT_MSG)
             {
               timer = osKernelSysTick();
               /* block until SDIO IP is ready or a timeout occur */
               while(osKernelSysTick() - timer <SD_TIMEOUT)
 #else
                 status = osMessageQueueGet(SDQueueID, (void *)&event, NULL, SD_TIMEOUT);
-              if ((status == osOK) && (event == READ_CPLT_MSG))
+              if ((status == osOK) && (event == WRITE_CPLT_MSG))
               {
                 timer = osKernelGetTickCount();
                 /* block until SDIO IP is ready or a timeout occur */

@@ -35,6 +35,7 @@ extern "C" {
  * 窗口波动(真实移动) + 至少一轴处于合理中段读数 + 校准中心/静止读数 来判断。 */
 #define JOY_CONNECT_WINDOW       50U    /* 移动观测窗口(样本数, 约500ms@100Hz) */
 #define JOY_CONNECT_RANGE        1200U  /* 窗口内原始值波动, 超过视为真实移动 */
+#define JOY_CONNECT_STABLE_SPAN  180U   /* 完整窗口波动小于此值，视为稳定有效电位 */
                                          /* 实测: 断开时 y 轴在124~945间振荡(窗口波动约820),
                                            真实摇动可轻易超过1200, 故取1200 */
 #define JOY_CONNECT_MID_MIN      1200U  /* 合理中段读数下限 (已连接中位约1700~2100;

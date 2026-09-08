@@ -16,15 +16,8 @@
 /*********************
  *      DEFINES
  *********************/
-#ifndef MY_DISP_HOR_RES
-    #warning Please define or replace the macro MY_DISP_HOR_RES with the actual screen width, default value 320 is used for now.
-    #define MY_DISP_HOR_RES    320
-#endif
-
-#ifndef MY_DISP_VER_RES
-    #warning Please define or replace the macro MY_DISP_VER_RES with the actual screen height, default value 240 is used for now.
-    #define MY_DISP_VER_RES    480
-#endif
+#define MY_DISP_HOR_RES    320
+#define MY_DISP_VER_RES    480
 
 /**********************
  *      TYPEDEFS
@@ -36,12 +29,14 @@
 static void disp_init(void);
 
 static void disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p);
+static void disp_monitor(lv_disp_drv_t *disp_drv, uint32_t time, uint32_t pixels);
 //static void gpu_fill(lv_disp_drv_t * disp_drv, lv_color_t * dest_buf, lv_coord_t dest_width,
 //        const lv_area_t * fill_area, lv_color_t color);
 
 /**********************
  *  STATIC VARIABLES
  **********************/
+static volatile App_DisplayStats_t s_display_stats;
 
 /**********************
  *      MACROS
@@ -116,6 +111,7 @@ void lv_port_disp_init(void)
 
     /*Used to copy the buffer's content to the display*/
     disp_drv.flush_cb = disp_flush;
+    disp_drv.monitor_cb = disp_monitor;
 
     /*Set a display buffer*/
     disp_drv.draw_buf = &draw_buf_dsc_1;
@@ -130,6 +126,16 @@ void lv_port_disp_init(void)
 
     /*Finally register the driver*/
     lv_disp_drv_register(&disp_drv);
+}
+
+void App_DisplayGetStats(App_DisplayStats_t *out)
+{
+    if (out != NULL) {
+        out->refresh_count = s_display_stats.refresh_count;
+        out->last_time_ms = s_display_stats.last_time_ms;
+        out->max_time_ms = s_display_stats.max_time_ms;
+        out->last_pixels = s_display_stats.last_pixels;
+    }
 }
 
 /**********************
@@ -166,24 +172,32 @@ static void disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
     if(disp_flush_enabled) {
         /*The most simple case (but also the slowest) to put all pixels to the screen one-by-one*/
 
-        int32_t x;
-        int32_t y;
+        uint32_t pixel_count;
 
         /* 1. 一次性设置刷新窗口 (发送 0x2A/0x2B/0x2C), 避免逐点重复发坐标 */
         LCD_SetWindows(area->x1, area->y1, area->x2, area->y2);
 
-        /* 2. 连续批量写入窗口内所有像素的 RGB565 颜色值 */
-        for(y = area->y1; y <= area->y2; y++) {
-            for(x = area->x1; x <= area->x2; x++) {
-                Lcd_WriteData_16Bit(color_p->full); /* 写入 16 位 RGB565 像素颜色 */
-                color_p++;
-            }
-        }
+        /* 2. 整块保持 CS 有效，批量发送 RGB565->RGB666 像素流。 */
+        pixel_count = (uint32_t)(area->x2 - area->x1 + 1) *
+                      (uint32_t)(area->y2 - area->y1 + 1);
+        LCD_WritePixelsRGB565((const uint16_t *)color_p, pixel_count);
     }
 
     /*IMPORTANT!!!
      *Inform the graphics library that you are ready with the flushing*/
     lv_disp_flush_ready(disp_drv);
+}
+
+/* LVGL 完成一轮脏区渲染后回调，可直接区分渲染/传输耗时与刷新频率。 */
+static void disp_monitor(lv_disp_drv_t *disp_drv, uint32_t time, uint32_t pixels)
+{
+    (void)disp_drv;
+    s_display_stats.refresh_count++;
+    s_display_stats.last_time_ms = time;
+    s_display_stats.last_pixels = pixels;
+    if (time > s_display_stats.max_time_ms) {
+        s_display_stats.max_time_ms = time;
+    }
 }
 
 /*OPTIONAL: GPU INTERFACE*/

@@ -33,8 +33,16 @@ extern "C" {
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
+typedef struct {
+    uint32_t refresh_count;
+    uint32_t last_time_ms;
+    uint32_t max_time_ms;
+    uint32_t last_pixels;
+} App_DisplayStats_t;
+
 /* Initialize low level display driver */
 void lv_port_disp_init(void);
+void App_DisplayGetStats(App_DisplayStats_t *out);
 
 /* Enable updating the screen (the flushing process) when disp_flush() is called by LVGL
  */

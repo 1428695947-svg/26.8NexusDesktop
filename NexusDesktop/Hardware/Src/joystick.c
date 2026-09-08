@@ -24,7 +24,7 @@
   *        Key_Init() -> JOY_Init(&hjoy) -> 注册按键回调 -> HAL_TIM_Base_Start_IT(&htim5)
   *   2. 周期任务（FreeRTOS，建议 10ms/100Hz）
   *        App_JoystickTask() 循环调用 JOY_Update(&hjoy)
-  *        内部流程：读原始值 -> 归一化 -> 平方曲线
+  *        内部流程：读原始值 -> 归一化 -> 线性/平方混合曲线
   *        结果存放在 hjoy.x_norm / hjoy.y_norm（-1.0~1.0），由应用层直接读取使用
   *   3. 按键（TIM5 1ms 中断）
   *        HAL_TIM_PeriodElapsedCallback -> App_Tick1ms() -> Key_ScanHandler()
@@ -39,9 +39,8 @@
   *    正向归一化最大仅约 0.32，控制不对称，不推荐
   * 4. JOY_ReadADC 每次 Stop->ConfigChannel->Start->Poll->Stop，为阻塞式轮询，
   *    不要在中断上下文中调用 JOY_Update
- * 5. 连接检测不依赖“断开时读数接近0”，而是综合窗口内波动、校准中心合理性和
- *    静止读数贴近中心来判断；参数见 joystick.h 的 JOY_CONNECT_*。
- *    持续按住对角极限位置可能被判为未连接（与旧版同样的取舍）
+ * 5. 连接检测不依赖单个瞬时值，而是综合两轴中段、移动幅度、完整窗口稳定度和
+ *    校准中心来判断；稳定的满推/对角位置不会被误判为断开。
   ******************************************************************************
   */
 
@@ -62,6 +61,8 @@ static uint16_t s_conn_min_x = 0;
 static uint16_t s_conn_max_x = 0;
 static uint16_t s_conn_min_y = 0;
 static uint16_t s_conn_max_y = 0;
+static uint16_t s_conn_span_x = UINT16_MAX; /* 最近一个完整窗口的波动范围 */
+static uint16_t s_conn_span_y = UINT16_MAX;
 static uint8_t  s_conn_window_cnt = 0;
 static uint8_t  s_conn_bad_cnt = 0;    /* 连续未连接判定计数 */
 
@@ -90,6 +91,10 @@ void JOY_Init(Joystick_HandleTypeDef *hjoy)
     hjoy->y_raw = 0;
     hjoy->x_norm = 0.0f;
     hjoy->y_norm = 0.0f;
+    s_conn_window_cnt = 0U;
+    s_conn_span_x = UINT16_MAX;
+    s_conn_span_y = UINT16_MAX;
+    s_conn_bad_cnt = 0U;
 
     /* 校准摇杆物理中心 */
     JOY_Calibrate(hjoy);
@@ -138,6 +143,7 @@ uint8_t JOY_IsConnected(Joystick_HandleTypeDef *hjoy)
     uint8_t  center_ok;
     uint8_t  mid_ok;
     uint8_t  moved;
+    uint8_t  stable_signal;
 
     if (hjoy == NULL) {
         return 0;
@@ -146,17 +152,19 @@ uint8_t JOY_IsConnected(Joystick_HandleTypeDef *hjoy)
     /* 计算判定信号 */
     center_ok = ((hjoy->center_x >= JOY_CONNECT_CENTER_MIN) && (hjoy->center_x <= JOY_CONNECT_CENTER_MAX) &&
                  (hjoy->center_y >= JOY_CONNECT_CENTER_MIN) && (hjoy->center_y <= JOY_CONNECT_CENTER_MAX)) ? 1U : 0U;
-    mid_ok = (((hjoy->x_raw >= JOY_CONNECT_MID_MIN) && (hjoy->x_raw <= JOY_CONNECT_MID_MAX)) ||
+    mid_ok = (((hjoy->x_raw >= JOY_CONNECT_MID_MIN) && (hjoy->x_raw <= JOY_CONNECT_MID_MAX)) &&
               ((hjoy->y_raw >= JOY_CONNECT_MID_MIN) && (hjoy->y_raw <= JOY_CONNECT_MID_MAX))) ? 1U : 0U;
     moved = (((uint16_t)(s_conn_max_x - s_conn_min_x) > JOY_CONNECT_RANGE) ||
              ((uint16_t)(s_conn_max_y - s_conn_min_y) > JOY_CONNECT_RANGE)) ? 1U : 0U;
+    stable_signal = (s_conn_span_x <= JOY_CONNECT_STABLE_SPAN &&
+                     s_conn_span_y <= JOY_CONNECT_STABLE_SPAN) ? 1U : 0U;
 
     /* 任一强信号即认为连接:
      * - mid_ok   : 至少一轴处于合理中段读数(摇杆在位, 与校准中心无关, 插上即有效)
      * - moved    : 窗口内波动大(真实摇动; 断开噪声通常远小于该阈值)
      * - center   : 校准中心合理且静止读数贴近中心(校准时在位)
      */
-    if (mid_ok || moved) {
+    if (mid_ok || moved || stable_signal) {
         s_conn_bad_cnt = 0;
         return 1;
     }
@@ -165,7 +173,7 @@ uint8_t JOY_IsConnected(Joystick_HandleTypeDef *hjoy)
                                             : (uint16_t)(hjoy->center_x - hjoy->x_raw);
         dy = (hjoy->y_raw > hjoy->center_y) ? (uint16_t)(hjoy->y_raw - hjoy->center_y)
                                             : (uint16_t)(hjoy->center_y - hjoy->y_raw);
-        if ((dx <= JOY_CONNECT_REST_BAND) || (dy <= JOY_CONNECT_REST_BAND)) {
+        if ((dx <= JOY_CONNECT_REST_BAND) && (dy <= JOY_CONNECT_REST_BAND)) {
             s_conn_bad_cnt = 0;
             return 1;
         }
@@ -202,6 +210,8 @@ static void JOY_UpdateConnWindow(Joystick_HandleTypeDef *hjoy)
     }
 
     if (++s_conn_window_cnt >= JOY_CONNECT_WINDOW) {
+        s_conn_span_x = (uint16_t)(s_conn_max_x - s_conn_min_x);
+        s_conn_span_y = (uint16_t)(s_conn_max_y - s_conn_min_y);
         s_conn_window_cnt = 0;
     }
 }
@@ -342,11 +352,11 @@ static void JOY_GetNormalized(Joystick_HandleTypeDef *hjoy)
 }
 
 /**
-  * @brief  对归一化值应用平方曲线
+  * @brief  对归一化值应用线性/平方混合曲线
   * @param  hjoy: 摇杆句柄指针
   * @retval None
-  * @note   公式：y = sign(x) * x^2，结果直接覆盖原 x_norm / y_norm
-  *         小角度输出更小、大角度输出更饱满，提高低速控制精度
+  * @note   公式：y = 0.6*x + 0.4*sign(x)*x^2。
+  *         保留精细控制同时避免纯平方曲线造成中段迟滞。
   */
 static void JOY_ApplyCurve(Joystick_HandleTypeDef *hjoy)
 {
@@ -361,15 +371,15 @@ static void JOY_ApplyCurve(Joystick_HandleTypeDef *hjoy)
     y = hjoy->y_norm;
 
     if (x < 0.0f) {
-        hjoy->x_norm = -(x * x);
+        hjoy->x_norm = 0.6f * x - 0.4f * x * x;
     } else {
-        hjoy->x_norm = (x * x);
+        hjoy->x_norm = 0.6f * x + 0.4f * x * x;
     }
 
     if (y < 0.0f) {
-        hjoy->y_norm = -(y * y);
+        hjoy->y_norm = 0.6f * y - 0.4f * y * y;
     } else {
-        hjoy->y_norm = (y * y);
+        hjoy->y_norm = 0.6f * y + 0.4f * y * y;
     }
 }
 

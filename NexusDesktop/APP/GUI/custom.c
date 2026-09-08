@@ -27,6 +27,13 @@
 #include "flash_store.h"
 #include "user_store.h"
 #include "app.h"
+#include "app_log.h"
+#include "app_file.h"
+#include "app_logview.h"
+#include "app_monitor.h"
+#include "app_music.h"
+#include "app_update.h"
+#include "app_desktop.h"
 #include <string.h>
 
 /**********************
@@ -50,9 +57,115 @@ static uint8_t      s_cur_brightness = SETTINGS_BRIGHT_DEFAULT; /* 当前生效�
 static volatile uint8_t s_cal_request = 0;     /* 触摸校准请求标志 (LVGL 任务消费) */
 static volatile uint8_t s_save_request = 0;    /* 设置写回 Flash 请求标志 (LVGL 任务消费) */
 
+/* 桌面图标拖拽状态。单指针系统同一时刻只会拖动一个对象。 */
+static lv_obj_t *s_drag_obj = NULL;
+static lv_point_t s_drag_press_point;
+static lv_point_t s_drag_obj_origin;
+static uint8_t s_drag_moved = 0U;
+static lv_obj_t *s_desktop_icons[DESKTOP_ICON_COUNT];
+
+static void desktop_layout_save(void)
+{
+    DesktopIconLayout_t layout;
+    uint32_t i;
+
+    layout.marker = DESKTOP_LAYOUT_MARKER;
+    for (i = 0U; i < DESKTOP_ICON_COUNT; i++) {
+        layout.x[i] = (int16_t)lv_obj_get_x(s_desktop_icons[i]);
+        layout.y[i] = (int16_t)lv_obj_get_y(s_desktop_icons[i]);
+    }
+    UserStore_SaveDesktopLayout(&layout);
+}
+
+static void desktop_layout_restore(void)
+{
+    const DesktopIconLayout_t *layout = UserStore_GetDesktopLayout();
+    uint32_t i;
+
+    if (layout == NULL || layout->marker != DESKTOP_LAYOUT_MARKER) return;
+    for (i = 0U; i < DESKTOP_ICON_COUNT; i++) {
+        lv_obj_set_pos(s_desktop_icons[i], layout->x[i], layout->y[i]);
+    }
+}
+
 /* 前置声明 (register_desktop_events 需要引用设置页打开回调) */
 static void settings_open_event_cb(lv_event_t * e);
 static void desktop_draw_event_cb(lv_event_t * e);
+static void desktop_file_event_cb(lv_event_t * e);
+static void desktop_log_event_cb(lv_event_t * e);
+static void desktop_monitor_event_cb(lv_event_t * e);
+static void desktop_music_event_cb(lv_event_t * e);
+static void desktop_update_event_cb(lv_event_t * e);
+
+/**
+ * 桌面图标拖拽：超过阈值后跟随指针移动；拖动结束产生的 CLICKED 会被拦截，
+ * 防止松手时误打开应用。
+ */
+static void desktop_icon_drag_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_current_target(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    lv_point_t point;
+
+    if (indev == NULL) return;
+    if (code == LV_EVENT_PRESSED) {
+        s_drag_obj = obj;
+        s_drag_moved = 0U;
+        lv_indev_get_point(indev, &s_drag_press_point);
+        s_drag_obj_origin.x = lv_obj_get_x(obj);
+        s_drag_obj_origin.y = lv_obj_get_y(obj);
+    }
+    else if (code == LV_EVENT_PRESSING && s_drag_obj == obj) {
+        int32_t dx;
+        int32_t dy;
+        int32_t x;
+        int32_t y;
+        int32_t max_x;
+        int32_t max_y;
+
+        lv_indev_get_point(indev, &point);
+        dx = (int32_t)point.x - s_drag_press_point.x;
+        dy = (int32_t)point.y - s_drag_press_point.y;
+        if (!s_drag_moved && dx > -6 && dx < 6 && dy > -6 && dy < 6) return;
+        s_drag_moved = 1U;
+        x = (int32_t)s_drag_obj_origin.x + dx;
+        y = (int32_t)s_drag_obj_origin.y + dy;
+        max_x = lv_obj_get_width(lv_obj_get_parent(obj)) - lv_obj_get_width(obj);
+        max_y = 370 - lv_obj_get_height(obj); /* 保留底部状态栏区域 */
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x > max_x) x = max_x;
+        if (y > max_y) y = max_y;
+        lv_obj_set_pos(obj, (lv_coord_t)x, (lv_coord_t)y);
+    }
+    else if (code == LV_EVENT_CLICKED && s_drag_obj == obj) {
+        if (s_drag_moved) lv_event_stop_processing(e);
+        s_drag_obj = NULL;
+        s_drag_moved = 0U;
+    }
+    else if (code == LV_EVENT_RELEASED && s_drag_obj == obj && s_drag_moved) {
+        desktop_layout_save();
+    }
+    else if (code == LV_EVENT_PRESS_LOST && s_drag_obj == obj) {
+        s_drag_obj = NULL;
+        s_drag_moved = 0U;
+    }
+}
+
+static void register_desktop_icon(lv_obj_t *obj, lv_event_cb_t open_cb, lv_ui *ui)
+{
+    if (obj == NULL) return;
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(obj, desktop_icon_drag_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(obj, open_cb, LV_EVENT_CLICKED, ui);
+}
+
+/* 密码连续错误锁定 */
+#define LOGIN_MAX_FAIL    3                 /* 连续错误次数上限 */
+#define LOGIN_LOCK_MS     15000             /* 锁定时长 15 秒 */
+static uint32_t    s_lock_until = 0;        /* 锁定到期时刻 (lv_tick_get) */
+static lv_timer_t *s_lock_timer = NULL;     /* 锁定倒计时刷新定时器 */
 
 /* The custom mouse cursor image (see img_cat_cursor.c). */
 extern const lv_img_dsc_t img_cat_cursor;
@@ -185,12 +298,21 @@ static void register_desktop_events(lv_ui * ui)
         lv_obj_add_event_cb(ui->desktop_btn_switch, mouse_switch_event_cb, LV_EVENT_CLICKED,
                             ui->desktop_btn_switch_label);
     }
-    if (ui->desktop_btn_settings != NULL) {
-        lv_obj_add_event_cb(ui->desktop_btn_settings, settings_open_event_cb, LV_EVENT_CLICKED, ui);
-    }
-    if (ui->desktop_btn_draw != NULL) {
-        lv_obj_add_event_cb(ui->desktop_btn_draw, desktop_draw_event_cb, LV_EVENT_CLICKED, ui);
-    }
+    register_desktop_icon(ui->desktop_btn_settings, settings_open_event_cb, ui);
+    register_desktop_icon(ui->desktop_btn_draw, desktop_draw_event_cb, ui);
+    register_desktop_icon(ui->desktop_btn_file, desktop_file_event_cb, ui);
+    register_desktop_icon(ui->desktop_btn_log, desktop_log_event_cb, ui);
+    register_desktop_icon(ui->desktop_btn_monitor, desktop_monitor_event_cb, ui);
+    register_desktop_icon(ui->desktop_btn_music, desktop_music_event_cb, ui);
+    register_desktop_icon(ui->desktop_btn_update, desktop_update_event_cb, ui);
+    s_desktop_icons[0] = ui->desktop_btn_settings;
+    s_desktop_icons[1] = ui->desktop_btn_draw;
+    s_desktop_icons[2] = ui->desktop_btn_file;
+    s_desktop_icons[3] = ui->desktop_btn_log;
+    s_desktop_icons[4] = ui->desktop_btn_monitor;
+    s_desktop_icons[5] = ui->desktop_btn_music;
+    s_desktop_icons[6] = ui->desktop_btn_update;
+    desktop_layout_restore();
 }
 
 static void enter_desktop(lv_ui * ui)
@@ -199,6 +321,10 @@ static void enter_desktop(lv_ui * ui)
         setup_scr_desktop(ui);
     }
     register_desktop_events(ui);
+    /* 桌面本身不滚动，按住图标移动时只允许图标响应拖拽。 */
+    lv_obj_clear_flag(ui->desktop, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_MOMENTUM |
+                                  LV_OBJ_FLAG_SCROLL_ELASTIC);
+    App_DesktopAttachUptimeLabel(ui->desktop_label_uptime);
     gui_update_switch_buttons(App_IsMouseConnected());   /* 同步桌面按钮的连接/图案状态 */
     lv_scr_load(ui->desktop);
 }
@@ -217,7 +343,8 @@ static void settings_slider_event_cb(lv_event_t * e)
         g_edit_settings.sens = (uint16_t)val;
         g_settings_dirty = 1;
         lv_label_set_text(ui->settings_label_sens_val, settings_sens_text(val));
-        App_SetMouseSpeed(0.6f * (float)val);
+        /* 与开机设置应用保持同一倍率，避免拖动滑条后速度突然下降。 */
+        App_SetMouseSpeed(1.5f * (float)val);
     }
     else if (slider == ui->settings_slider_zoom) {
         g_edit_settings.cursor_zoom = (uint16_t)val;
@@ -232,6 +359,13 @@ static void settings_slider_event_cb(lv_event_t * e)
         lv_snprintf(buf, sizeof(buf), "%d%%", val);
         lv_label_set_text(ui->settings_label_bright_val, buf);
         gui_set_brightness((uint8_t)val);
+    }
+    else if (slider == ui->settings_slider_volume) {
+        g_edit_settings.volume = (uint16_t)val;
+        g_settings_dirty = 1;
+        lv_snprintf(buf, sizeof(buf), "%d%%", val);
+        lv_label_set_text(ui->settings_label_volume_val, buf);
+        /* 当前无音频硬件：只更新逻辑设置，保留后续驱动接口。 */
     }
     else if (slider == ui->settings_slider_sleep) {
         g_edit_settings.sleep_sec = settings_sleep_seconds(val);
@@ -276,6 +410,41 @@ static void desktop_draw_event_cb(lv_event_t * e)
     App_RequestDrawOpen();
 }
 
+/* 桌面"文件管理"按钮 */
+static void desktop_file_event_cb(lv_event_t * e)
+{
+    (void)e;
+    App_File_Open();
+}
+
+/* 桌面"系统日志"按钮 */
+static void desktop_log_event_cb(lv_event_t * e)
+{
+    (void)e;
+    App_LogView_Open();
+}
+
+/* 桌面"系统监控"按钮 */
+static void desktop_monitor_event_cb(lv_event_t * e)
+{
+    (void)e;
+    App_Monitor_Open();
+}
+
+/* 桌面"音乐"按钮: 保留应用入口并提示播放设备未连接。 */
+static void desktop_music_event_cb(lv_event_t * e)
+{
+    (void)e;
+    App_MusicOpen();
+}
+
+/* 桌面“更新”按钮：显示版本状态并执行伪 OTA 演示。 */
+static void desktop_update_event_cb(lv_event_t * e)
+{
+    (void)e;
+    App_UpdateOpen();
+}
+
 /* 设置页"触摸校准": 置请求标志, 由 App_LvglTask 实际执行
    (避免在校准期间阻塞 LVGL 事件回调) */
 static void settings_cal_event_cb(lv_event_t * e)
@@ -304,6 +473,10 @@ static void register_settings_events(lv_ui * ui)
     if (ui->settings_slider_bright != NULL) {
         lv_obj_add_event_cb(ui->settings_slider_bright, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
         lv_obj_add_event_cb(ui->settings_slider_bright, settings_slider_released_cb, LV_EVENT_RELEASED, ui);
+    }
+    if (ui->settings_slider_volume != NULL) {
+        lv_obj_add_event_cb(ui->settings_slider_volume, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+        lv_obj_add_event_cb(ui->settings_slider_volume, settings_slider_released_cb, LV_EVENT_RELEASED, ui);
     }
     if (ui->settings_slider_sleep != NULL) {
         lv_obj_add_event_cb(ui->settings_slider_sleep, settings_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
@@ -348,6 +521,12 @@ void gui_open_settings(void)
         lv_snprintf(bbuf, sizeof(bbuf), "%d%%", g_edit_settings.brightness);
         lv_label_set_text(ui->settings_label_bright_val, bbuf);
     }
+    if (ui->settings_slider_volume != NULL) {
+        char vbuf[16];
+        lv_slider_set_value(ui->settings_slider_volume, g_edit_settings.volume, LV_ANIM_OFF);
+        lv_snprintf(vbuf, sizeof(vbuf), "%d%%", g_edit_settings.volume);
+        lv_label_set_text(ui->settings_label_volume_val, vbuf);
+    }
     int sleep_idx = settings_sleep_index(g_edit_settings.sleep_sec);
     if (ui->settings_slider_sleep != NULL) {
         lv_slider_set_value(ui->settings_slider_sleep, sleep_idx, LV_ANIM_OFF);
@@ -362,8 +541,20 @@ void gui_open_settings(void)
  */
 void gui_save_settings(void)
 {
-    UserStore_SaveSettings(&g_edit_settings);
-    g_settings_dirty = 0;
+    if (g_settings_dirty) {
+        if (UserStore_SaveSettings(&g_edit_settings)) {
+            g_settings_dirty = 0;
+            App_Log_Event(LOG_LEVEL_INFO,
+                "设置已保存 sens=%u zoom=%u bright=%u volume=%u sleep=%u",
+                (unsigned int)g_edit_settings.sens,
+                (unsigned int)g_edit_settings.cursor_zoom,
+                (unsigned int)g_edit_settings.brightness,
+                (unsigned int)g_edit_settings.volume,
+                (unsigned int)g_edit_settings.sleep_sec);
+        } else {
+            App_Log_Error("系统设置保存失败");
+        }
+    }
     s_save_request = 0;
 }
 
@@ -385,16 +576,65 @@ uint8_t gui_settings_is_dirty(void)
     return g_settings_dirty;
 }
 
+/* 锁定倒计时刷新: 更新剩余秒数, 到期后解锁 */
+static void login_lock_update_cb(lv_timer_t * t)
+{
+    (void)t;
+    lv_ui * ui = &guider_ui;
+    uint32_t now = lv_tick_get();
+
+    if (s_lock_until <= now) {
+        /* 解锁 */
+        if (ui->login_label_hint != NULL) {
+            lv_label_set_text(ui->login_label_hint, "请输入密码登录");
+        }
+        if (ui->login_btn_login != NULL) {
+            lv_obj_clear_state(ui->login_btn_login, LV_STATE_DISABLED);
+        }
+        if (s_lock_timer != NULL) {
+            lv_timer_del(s_lock_timer);
+            s_lock_timer = NULL;
+        }
+        s_lock_until = 0;
+        s_error_count = 0;
+    }
+    else {
+        char msg[48];
+        uint32_t remain = (s_lock_until - now + 999U) / 1000U;
+        if (ui->login_label_hint != NULL) {
+            lv_snprintf(msg, sizeof(msg), "错误过多，锁定 %lu 秒", (unsigned long)remain);
+            lv_label_set_text(ui->login_label_hint, msg);
+        }
+    }
+}
+
 static void login_event_cb(lv_event_t * e)
 {
     lv_ui * ui = (lv_ui *)lv_event_get_user_data(e);
     const char * entered = lv_textarea_get_text(ui->login_ta_password);
     const char * stored = FlashStore_GetPassword();
 
+    /* 锁定期内忽略登录点击 */
+    if (s_lock_until > lv_tick_get()) {
+        if (ui->login_ta_password != NULL) {
+            lv_textarea_set_text(ui->login_ta_password, "");
+        }
+        return;
+    }
+
     if (stored != NULL && entered != NULL && strcmp(entered, stored) == 0)
     {
         s_error_count = 0;                      /* Correct password: reset counter */
+        if (s_lock_timer != NULL) {
+            lv_timer_del(s_lock_timer);
+            s_lock_timer = NULL;
+        }
+        s_lock_until = 0;
+        if (ui->login_btn_login != NULL) {
+            lv_obj_clear_state(ui->login_btn_login, LV_STATE_DISABLED);
+        }
         enter_desktop(ui);
+        App_Log_Event(LOG_LEVEL_INFO, "密码登录成功");
     }
     else
     {
@@ -402,8 +642,23 @@ static void login_event_cb(lv_event_t * e)
         s_error_count++;
         lv_textarea_set_text(ui->login_ta_password, "");
         if (ui->login_label_hint != NULL) {
-            char msg[40];
-            lv_snprintf(msg, sizeof(msg), "密码错误，已输错 %d 次", s_error_count);
+            char msg[48];
+            if (s_error_count >= LOGIN_MAX_FAIL) {
+                /* 连续错误达到上限 -> 锁定一段时间 */
+                s_lock_until = lv_tick_get() + LOGIN_LOCK_MS;
+                if (s_lock_timer == NULL) {
+                    s_lock_timer = lv_timer_create(login_lock_update_cb, 250, NULL);
+                }
+                if (ui->login_btn_login != NULL) {
+                    lv_obj_add_state(ui->login_btn_login, LV_STATE_DISABLED);
+                }
+                lv_snprintf(msg, sizeof(msg), "密码错误 %d 次，已锁定 15 秒", s_error_count);
+                App_Log_Event(LOG_LEVEL_ERROR, "密码错误过多, 登录已锁定");
+            }
+            else {
+                lv_snprintf(msg, sizeof(msg), "密码错误，已输错 %d 次", s_error_count);
+                App_Log_Event(LOG_LEVEL_WARN, "密码错误");
+            }
             lv_label_set_text(ui->login_label_hint, msg);
         }
     }

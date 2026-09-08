@@ -15,6 +15,7 @@
 #include "lv_port_indev.h"
 #include "../../lvgl.h"
 #include "app.h"
+#include "app_mouse.h"
 
 /**********************
  *      TYPEDEFS
@@ -62,11 +63,17 @@ static void mouse_init(void)
 /*Will be called by the library to read the mouse*/
 static void mouse_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
 {
-    (void)indev_drv;
+    int x;
+    int y;
+    uint8_t pressed;
+    uint8_t more;
 
-    data->point.x = (lv_coord_t)g_mouse_x;
-    data->point.y = (lv_coord_t)g_mouse_y;
-    data->state = g_mouse_pressed ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+    (void)indev_drv;
+    App_InputReadPointer(&x, &y, &pressed, &more);
+    data->point.x = (lv_coord_t)x;
+    data->point.y = (lv_coord_t)y;
+    data->state = pressed ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+    data->continue_reading = more ? 1U : 0U;
 }
 
 #else /*Enable this file at the top*/

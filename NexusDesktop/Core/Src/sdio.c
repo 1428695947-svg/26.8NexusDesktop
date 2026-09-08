@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "sdio.h"
+#include "shared_bus.h"
 
 /* USER CODE BEGIN 0 */
 
@@ -56,7 +57,6 @@ void MX_SDIO_SD_Init(void)
 void HAL_SD_MspInit(SD_HandleTypeDef* sdHandle)
 {
 
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
   if(sdHandle->Instance==SDIO)
   {
   /* USER CODE BEGIN SDIO_MspInit 0 */
@@ -65,30 +65,9 @@ void HAL_SD_MspInit(SD_HandleTypeDef* sdHandle)
     /* SDIO clock enable */
     __HAL_RCC_SDIO_CLK_ENABLE();
 
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    /**SDIO GPIO Configuration
-    PC8     ------> SDIO_D0
-    PC9     ------> SDIO_D1
-    PC10     ------> SDIO_D2
-    PC11     ------> SDIO_D3
-    PC12     ------> SDIO_CK
-    PD2     ------> SDIO_CMD
-    */
-    GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11
-                          |GPIO_PIN_12;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_2;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
-    HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+    /* PC10/PC11/PC12/PD2 与触摸共线，只能使用 1-bit SDIO。
+       板级仲裁层会保持 XPT2046 的 PC11 片选为高，避免其干扰 CMD。 */
+    SharedBus_SelectSd();
 
     /* SDIO DMA Init */
     /* SDIO_RX Init */

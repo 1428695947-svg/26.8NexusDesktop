@@ -66,6 +66,7 @@ typedef void (*Key_ReleaseCallback_t)(uint8_t keyId);
 void Key_Init(void);
 void Key_ScanHandler(void);
 uint32_t Key_GetTick(void);
+uint8_t Key_IsPressed(uint8_t keyId);  /* 读取已消抖的持续按下状态 */
 
 void Key_SetPressDownCallback(Key_PressDownCallback_t callback);
 void Key_SetClickCallback(Key_ClickCallback_t callback);

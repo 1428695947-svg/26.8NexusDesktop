@@ -8,7 +8,7 @@
 */
 
 /*
- * 系统设置界面 (光标灵敏度/光标大小/屏幕亮度/熄屏时间)
+ * 系统设置界面 (光标灵敏度/光标大小/屏幕亮度/音量预留/熄屏时间)
  * 由 GUI Guider 生成的 setup_scr_* 风格手工封装, 适配 STM32 工程。
  */
 #include "lvgl.h"
@@ -122,6 +122,7 @@ void setup_scr_settings(lv_ui *ui)
     int sens0   = (st != NULL) ? st->sens : SETTINGS_SENS_DEFAULT;
     int zoom0   = (st != NULL) ? st->cursor_zoom : SETTINGS_ZOOM_DEFAULT;
     int bright0 = (st != NULL) ? st->brightness : SETTINGS_BRIGHT_DEFAULT;
+    int volume0 = (st != NULL) ? st->volume : SETTINGS_VOLUME_DEFAULT;
     int sleep0  = settings_sleep_index((st != NULL) ? st->sleep_sec : SETTINGS_SLEEP_DEFAULT);
 
     /* 根屏幕 */
@@ -177,14 +178,14 @@ void setup_scr_settings(lv_ui *ui)
     lv_obj_set_style_text_font(ui->settings_btn_cal, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(ui->settings_btn_cal, lv_color_hex(0xe6f1fd), LV_PART_MAIN|LV_STATE_PRESSED);
 
-    /* 四张设置卡片 */
+    /* 五张紧凑设置卡片，在 320x480 内完整展示。 */
     int card_x = 12;
     int card_w = 296;
-    int card_h = 94;
-    int gap    = 10;
-    int y0     = 64;
+    int card_h = 74;
+    int gap    = 7;
+    int y0     = 60;
     int slider_w = 200;
-    int slider_y = 48;
+    int slider_y = 46;
 
     ui->settings_card_sens = settings_card_create(ui->settings, card_x, y0 + 0*(card_h+gap), card_w, card_h);
     settings_row_build(ui->settings_card_sens, &ui->settings_label_sens, &ui->settings_label_sens_val,
@@ -207,7 +208,16 @@ void setup_scr_settings(lv_ui *ui)
                            SETTINGS_BRIGHT_MIN, SETTINGS_BRIGHT_MAX, bright0, slider_w, slider_y);
     }
 
-    ui->settings_card_sleep = settings_card_create(ui->settings, card_x, y0 + 3*(card_h+gap), card_w, card_h);
+    ui->settings_card_volume = settings_card_create(ui->settings, card_x, y0 + 3*(card_h+gap), card_w, card_h);
+    {
+        char buf[16]; lv_snprintf(buf, sizeof(buf), "%d%%", volume0);
+        settings_row_build(ui->settings_card_volume, &ui->settings_label_volume,
+                           &ui->settings_label_volume_val, &ui->settings_slider_volume,
+                           "音量(预留)", buf, SETTINGS_VOLUME_MIN, SETTINGS_VOLUME_MAX,
+                           volume0, slider_w, slider_y);
+    }
+
+    ui->settings_card_sleep = settings_card_create(ui->settings, card_x, y0 + 4*(card_h+gap), card_w, card_h);
     settings_row_build(ui->settings_card_sleep, &ui->settings_label_sleep, &ui->settings_label_sleep_val,
                        &ui->settings_slider_sleep, "熄屏时间", settings_sleep_text(sleep0),
                        0, 5, sleep0, slider_w, slider_y);

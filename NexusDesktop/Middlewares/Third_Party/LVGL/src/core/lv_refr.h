@@ -96,6 +96,12 @@ void lv_refr_reset_fps_counter(void);
  * @return the average FPS
  */
 uint32_t lv_refr_get_fps_avg(void);
+
+/**
+ * Get the FPS value shown by LVGL's performance monitor in the latest window
+ * @return the current FPS
+ */
+uint32_t lv_refr_get_fps_current(void);
 #endif
 
 /**

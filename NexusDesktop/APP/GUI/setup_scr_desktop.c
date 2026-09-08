@@ -228,6 +228,124 @@ void setup_scr_desktop(lv_ui *ui)
     lv_obj_set_style_text_align(ui->desktop_btn_draw, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(ui->desktop_btn_draw, lv_color_hex(0x1a7cd6), LV_PART_MAIN|LV_STATE_PRESSED);
 
+    //Write codes desktop_btn_file (文件管理应用入口)
+    ui->desktop_btn_file = lv_btn_create(ui->desktop);
+    ui->desktop_btn_file_label = lv_label_create(ui->desktop_btn_file);
+    lv_label_set_text(ui->desktop_btn_file_label, "文件管理");
+    lv_label_set_long_mode(ui->desktop_btn_file_label, LV_LABEL_LONG_WRAP);
+    lv_obj_align(ui->desktop_btn_file_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_pad_all(ui->desktop_btn_file, 0, LV_STATE_DEFAULT);
+    lv_obj_set_width(ui->desktop_btn_file_label, LV_PCT(100));
+    lv_obj_set_pos(ui->desktop_btn_file, 130, 70);
+    lv_obj_set_size(ui->desktop_btn_file, 180, 64);
+    lv_obj_set_style_bg_opa(ui->desktop_btn_file, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_file, lv_color_hex(0x16a34a), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->desktop_btn_file, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui->desktop_btn_file, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_file, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(ui->desktop_btn_file, 4, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(ui->desktop_btn_file, lv_color_hex(0x16a34a), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(ui->desktop_btn_file, 40, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(ui->desktop_btn_file, 2, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_x(ui->desktop_btn_file, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_y(ui->desktop_btn_file, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_file, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_file, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui->desktop_btn_file, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->desktop_btn_file, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_file, lv_color_hex(0x0e7f35), LV_PART_MAIN|LV_STATE_PRESSED);
+
+    //Write codes desktop_btn_log (系统日志应用入口)
+    ui->desktop_btn_log = lv_btn_create(ui->desktop);
+    ui->desktop_btn_log_label = lv_label_create(ui->desktop_btn_log);
+    lv_label_set_text(ui->desktop_btn_log_label, "系统日志");
+    lv_label_set_long_mode(ui->desktop_btn_log_label, LV_LABEL_LONG_WRAP);
+    lv_obj_align(ui->desktop_btn_log_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_pad_all(ui->desktop_btn_log, 0, LV_STATE_DEFAULT);
+    lv_obj_set_width(ui->desktop_btn_log_label, LV_PCT(100));
+    lv_obj_set_pos(ui->desktop_btn_log, 130, 146);
+    lv_obj_set_size(ui->desktop_btn_log, 180, 64);
+    lv_obj_set_style_bg_opa(ui->desktop_btn_log, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_log, lv_color_hex(0xf59e0b), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->desktop_btn_log, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui->desktop_btn_log, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_log, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(ui->desktop_btn_log, 4, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(ui->desktop_btn_log, lv_color_hex(0xf59e0b), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(ui->desktop_btn_log, 40, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(ui->desktop_btn_log, 2, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_x(ui->desktop_btn_log, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_y(ui->desktop_btn_log, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_log, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_log, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui->desktop_btn_log, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->desktop_btn_log, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_log, lv_color_hex(0xc07f08), LV_PART_MAIN|LV_STATE_PRESSED);
+
+    //Write codes desktop_btn_monitor (系统监控应用入口)
+    ui->desktop_btn_monitor = lv_btn_create(ui->desktop);
+    ui->desktop_btn_monitor_label = lv_label_create(ui->desktop_btn_monitor);
+    lv_label_set_text(ui->desktop_btn_monitor_label, "系统监控");
+    lv_label_set_long_mode(ui->desktop_btn_monitor_label, LV_LABEL_LONG_WRAP);
+    lv_obj_align(ui->desktop_btn_monitor_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_pad_all(ui->desktop_btn_monitor, 0, LV_STATE_DEFAULT);
+    lv_obj_set_width(ui->desktop_btn_monitor_label, LV_PCT(100));
+    lv_obj_set_pos(ui->desktop_btn_monitor, 130, 222);
+    lv_obj_set_size(ui->desktop_btn_monitor, 180, 64);
+    lv_obj_set_style_bg_opa(ui->desktop_btn_monitor, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_monitor, lv_color_hex(0x8b5cf6), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->desktop_btn_monitor, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(ui->desktop_btn_monitor, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_monitor, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(ui->desktop_btn_monitor, 4, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(ui->desktop_btn_monitor, lv_color_hex(0x8b5cf6), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(ui->desktop_btn_monitor, 40, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(ui->desktop_btn_monitor, 2, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_x(ui->desktop_btn_monitor, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_ofs_y(ui->desktop_btn_monitor, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_monitor, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_monitor, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui->desktop_btn_monitor, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->desktop_btn_monitor, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_monitor, lv_color_hex(0x713fe0), LV_PART_MAIN|LV_STATE_PRESSED);
+
+    //Write codes desktop_btn_music (音乐应用占位入口)
+    ui->desktop_btn_music = lv_btn_create(ui->desktop);
+    ui->desktop_btn_music_label = lv_label_create(ui->desktop_btn_music);
+    lv_label_set_text(ui->desktop_btn_music_label, "音乐");
+    lv_obj_align(ui->desktop_btn_music_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_pos(ui->desktop_btn_music, 130, 298);
+    lv_obj_set_size(ui->desktop_btn_music, 86, 64);
+    lv_obj_set_style_bg_color(ui->desktop_btn_music, lv_color_hex(0x475569), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_music, lv_color_hex(0x334155), LV_PART_MAIN|LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(ui->desktop_btn_music, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_music, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_music, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_music, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes desktop_btn_update (版本状态/伪 OTA 入口)
+    ui->desktop_btn_update = lv_btn_create(ui->desktop);
+    ui->desktop_btn_update_label = lv_label_create(ui->desktop_btn_update);
+    lv_label_set_text(ui->desktop_btn_update_label, "更新");
+    lv_obj_align(ui->desktop_btn_update_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_pos(ui->desktop_btn_update, 224, 298);
+    lv_obj_set_size(ui->desktop_btn_update, 86, 64);
+    lv_obj_set_style_bg_color(ui->desktop_btn_update, lv_color_hex(0x0f766e), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->desktop_btn_update, lv_color_hex(0x115e59), LV_PART_MAIN|LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(ui->desktop_btn_update, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->desktop_btn_update, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_btn_update, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_btn_update, &lv_font_sourcehan18_custom, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes desktop_label_uptime (开机运行时长)
+    ui->desktop_label_uptime = lv_label_create(ui->desktop);
+    lv_label_set_text(ui->desktop_label_uptime, "UP 000:00:00");
+    lv_obj_set_pos(ui->desktop_label_uptime, 130, 378);
+    lv_obj_set_size(ui->desktop_label_uptime, 180, 24);
+    lv_obj_set_style_text_align(ui->desktop_label_uptime, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->desktop_label_uptime, &lv_font_montserrat_14, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->desktop_label_uptime, lv_color_hex(0x334155), LV_PART_MAIN|LV_STATE_DEFAULT);
+
     //The custom code of desktop.
 
 

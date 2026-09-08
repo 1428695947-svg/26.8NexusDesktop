@@ -26,6 +26,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app.h"
+#include "app_log.h"
+#include "app_mouse.h"
+#include "app_health.h"
 
 /* USER CODE END Includes */
 
@@ -63,11 +66,27 @@ const osThreadAttr_t keyEventTask_attributes = {
 };
 
 /* 画图应用任务（原生 LCD 绘制, 独立于 LVGL, 防止界面状态被覆盖） */
+/* 日志任务（消费日志队列, 写入 SD 卡 SYSLOG.LOG） */
+osThreadId_t logTaskHandle;
+const osThreadAttr_t logTask_attributes = {
+  .name = "logTask",
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+
 osThreadId_t drawTaskHandle;
 const osThreadAttr_t drawTask_attributes = {
   .name = "drawTask",
   .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+};
+
+/* 软件任务看门狗: 监测应用任务心跳, 记录超时与恢复。 */
+osThreadId_t healthTaskHandle;
+const osThreadAttr_t healthTask_attributes = {
+  .name = "healthTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
 /* USER CODE END Variables */
@@ -128,6 +147,9 @@ void MX_FREERTOS_Init(void) {
   keyEventTaskHandle = osThreadNew(KeyEventTask, NULL, &keyEventTask_attributes);
   /* 画图应用任务: 原生画布, 独立任务, 与 LVGL 前台切换运行 */
   drawTaskHandle = osThreadNew(App_DrawTask, NULL, &drawTask_attributes);
+  /* 日志任务: 日志队列消费 + SD 写盘 */
+  logTaskHandle = osThreadNew(App_LogTask, NULL, &logTask_attributes);
+  healthTaskHandle = osThreadNew(App_HealthTask, NULL, &healthTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -146,7 +168,7 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  App_JoystickTask();
+  App_MouseTask();
    /* Infinite loop */
   // for(;;)
   // {
@@ -157,6 +179,17 @@ void StartDefaultTask(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+/**
+  * @brief  FreeRTOS 空闲低功耗钩子
+  * @note   CPU 空闲时进入 Sleep，SysTick/输入中断均可唤醒；不关闭外设和 SRAM。
+  */
+void vApplicationIdleHook(void)
+{
+  __DSB();
+  __WFI();
+  __ISB();
+}
+
 /**
   * @brief  LVGL 界面渲染任务入口
   * @note   实际循环体在应用层 App_LvglTask() 中实现 (app.c)

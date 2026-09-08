@@ -17,7 +17,7 @@ extern "C" {
 
 typedef struct
 {
-  
+
 	lv_obj_t *login;
 	bool login_del;
 	lv_obj_t *login_btn_login;
@@ -42,6 +42,17 @@ typedef struct
 	lv_obj_t *desktop_btn_settings_label;
 	lv_obj_t *desktop_btn_draw;
 	lv_obj_t *desktop_btn_draw_label;
+	lv_obj_t *desktop_btn_file;
+	lv_obj_t *desktop_btn_file_label;
+	lv_obj_t *desktop_btn_log;
+	lv_obj_t *desktop_btn_log_label;
+	lv_obj_t *desktop_btn_monitor;
+	lv_obj_t *desktop_btn_monitor_label;
+	lv_obj_t *desktop_btn_music;
+	lv_obj_t *desktop_btn_music_label;
+	lv_obj_t *desktop_btn_update;
+	lv_obj_t *desktop_btn_update_label;
+	lv_obj_t *desktop_label_uptime;
 	lv_obj_t *settings;
 	bool settings_del;
 	lv_obj_t *settings_btn_back;
@@ -61,6 +72,10 @@ typedef struct
 	lv_obj_t *settings_label_bright;
 	lv_obj_t *settings_label_bright_val;
 	lv_obj_t *settings_slider_bright;
+	lv_obj_t *settings_card_volume;
+	lv_obj_t *settings_label_volume;
+	lv_obj_t *settings_label_volume_val;
+	lv_obj_t *settings_slider_volume;
 	lv_obj_t *settings_card_sleep;
 	lv_obj_t *settings_label_sleep;
 	lv_obj_t *settings_label_sleep_val;

@@ -38,6 +38,10 @@
 
 extern SD_HandleTypeDef hsd;
 
+/* 实板诊断状态: 1=检测, 2=HAL初始化, 3=HAL失败, 5=就绪。 */
+static volatile uint8_t s_sd_init_stage = 0U;
+static volatile uint32_t s_sd_hal_error = 0U;
+
 /* USER CODE BEGIN BeforeInitSection */
 /* can be used to modify / undefine following code or add code */
 /* USER CODE END BeforeInitSection */
@@ -48,21 +52,24 @@ extern SD_HandleTypeDef hsd;
 __weak uint8_t BSP_SD_Init(void)
 {
   uint8_t sd_state = MSD_OK;
+  s_sd_init_stage = 1U;
   /* Check if the SD card is plugged in the slot */
   if (BSP_SD_IsDetected() != SD_PRESENT)
   {
     return MSD_ERROR;
   }
   /* HAL SD initialization */
+  s_sd_init_stage = 2U;
   sd_state = HAL_SD_Init(&hsd);
-  /* Configure SD Bus width (4 bits mode selected) */
+  s_sd_hal_error = hsd.ErrorCode;
+  if (sd_state != MSD_OK)
+  {
+    s_sd_init_stage = 3U;
+  }
+  /* 与触摸屏共线，只允许保持 HAL 初始化时的 1-bit SDIO 模式。 */
   if (sd_state == MSD_OK)
   {
-    /* Enable wide operation */
-    if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) != HAL_OK)
-    {
-      sd_state = MSD_ERROR;
-    }
+    s_sd_init_stage = 5U;
   }
 
   return sd_state;

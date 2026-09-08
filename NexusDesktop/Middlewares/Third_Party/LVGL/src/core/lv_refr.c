@@ -36,6 +36,7 @@ typedef struct {
     uint32_t    frame_cnt;
     uint32_t    fps_sum_cnt;
     uint32_t    fps_sum_all;
+    uint32_t    fps_current;
 #if LV_USE_LABEL
     lv_obj_t  * perf_label;
 #endif
@@ -409,6 +410,7 @@ void _lv_disp_refr_timer(lv_timer_t * tmr)
             fps = fps_limit;
         }
 
+        perf_monitor.fps_current = fps;
         perf_monitor.fps_sum_all += fps;
         perf_monitor.fps_sum_cnt ++;
         uint32_t cpu = 100 - lv_timer_get_idle();
@@ -463,6 +465,11 @@ uint32_t lv_refr_get_fps_avg(void)
         return 0;
     }
     return perf_monitor.fps_sum_all / perf_monitor.fps_sum_cnt;
+}
+
+uint32_t lv_refr_get_fps_current(void)
+{
+    return perf_monitor.fps_current;
 }
 #endif
 

@@ -78,7 +78,7 @@
  *====================*/
 
 /*Default display refresh period. LVG will redraw changed areas with this period time*/
-#define LV_DISP_DEF_REFR_PERIOD 30      /*[ms]*/
+#define LV_DISP_DEF_REFR_PERIOD 16      /*[ms] 目标约60Hz；实际帧率由脏区传输量决定 */
 
 /*Input device read period in milliseconds*/
 #define LV_INDEV_DEF_READ_PERIOD 5      /*[ms] 鼠标/触摸采样周期, 调小让点击响应更快、不漏按键*/

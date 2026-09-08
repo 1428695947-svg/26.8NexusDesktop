@@ -2876,9 +2876,19 @@
               <FilePath>../Hardware/Src/user_store.c</FilePath>
             </File>
             <File>
+              <FileName>shared_bus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Hardware/Src/shared_bus.c</FilePath>
+            </File>
+            <File>
               <FileName>user_store.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Hardware\Inc\user_store.h</FilePath>
+            </File>
+            <File>
+              <FileName>shared_bus.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Hardware\Inc\shared_bus.h</FilePath>
             </File>
             <File>
               <FileName>lcd.h</FileName>
@@ -2929,6 +2939,76 @@
               <FileName>app.c</FileName>
               <FileType>1</FileType>
               <FilePath>../APP/Src/app.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_log.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_log.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_monitor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_monitor.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_file.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_file.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_logview.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_logview.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_mouse.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_mouse.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_power.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_storage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_storage.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_draw.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_draw.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_touch.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_touch.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_boot.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_boot.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_desktop.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_desktop.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_music.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_music.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_update.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_update.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_health.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/Src/app_health.c</FilePath>
             </File>
           </Files>
         </Group>
